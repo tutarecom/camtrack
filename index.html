@@ -127,7 +127,7 @@ body {
 .hint { color: var(--text-dim); font-size: 11.5px; padding: 6px 2px 8px; line-height: 1.5; }
 
 /* track add row */
-#track-add { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 9px; }
+#track-add { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; margin-bottom: 9px; }
 
 /* track rows */
 .track-row {
@@ -172,6 +172,10 @@ select.sel { font-family: var(--sans); }
 .vec3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; flex: 1; }
 .check-row { display: flex; align-items: center; gap: 7px; margin: 4px 0 7px; color: var(--text); font-size: 12px; cursor: pointer; user-select: none; }
 .check-row input { accent-color: var(--accent); }
+/* segmented control (mutually-exclusive toggle pills, e.g. Normal side) */
+.seg { display: flex; gap: 5px; flex: 1; }
+.seg .btn { flex: 1; padding: 4px 6px; }
+.seg .btn.on { background: var(--accent-dim); border-color: var(--accent-dim); color: #eaf6ff; font-weight: 650; }
 .props-actions { display: flex; gap: 7px; margin: 12px 0 16px; }
 .props-actions .btn { flex: 1; }
 #track-note { color: var(--text-dim); font-size: 11px; margin: 2px 0 10px; line-height: 1.5; }
@@ -216,6 +220,26 @@ select.sel { font-family: var(--sans); }
   pointer-events: none; display: none;
 }
 #pip-box.show { display: block; }
+#pip-box.big {
+  width: min(calc(100% - 36px), 1280px, calc((100vh - 200px) * 1.7778));
+  left: 50%; right: auto; transform: translateX(-50%);
+  bottom: 72px;
+}
+#pip-tools { position: absolute; top: 7px; right: 7px; display: flex; gap: 5px; }
+.pip-btn {
+  appearance: none; border: 1px solid #53b9ff88; background: #16303fdd; color: #bfe2ff;
+  font: inherit; font-size: 10.5px; font-weight: 700; letter-spacing: .6px;
+  line-height: 1; padding: 5px 9px; border-radius: 6px;
+  cursor: pointer; pointer-events: auto; backdrop-filter: blur(4px);
+}
+.pip-btn:hover { background: #1d4256; color: #eaf6ff; }
+#gl.pointer { cursor: crosshair; }
+#nav-hud {
+  position: absolute; left: 12px; bottom: 12px; z-index: 5;
+  background: #1a1e26dd; border: 1px solid var(--border2); border-radius: 7px;
+  padding: 7px 11px; font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+  pointer-events: none; line-height: 1.6; white-space: pre; backdrop-filter: blur(4px);
+}
 #pip-label {
   position: absolute; top: -1px; left: 10px; transform: translateY(-50%);
   background: #16303f; border: 1px solid var(--accent-dim); color: #bfe2ff;
@@ -337,9 +361,10 @@ select.sel { font-family: var(--sans); }
         <button class="btn" id="btn-add-line" title="Straight-line move">+ Line</button>
         <button class="btn" id="btn-add-circle" title="Circle / oval orbit">+ Circle</button>
         <button class="btn" id="btn-add-fixed" title="Fixed position, rotating view">+ Fixed</button>
+        <button class="btn" id="btn-add-curve" title="Curved path — PowerPoint-style anchor points">+ Curve</button>
       </div>
       <div id="track-list"></div>
-      <div class="hint" id="tracks-hint">Straight lines, circles/ovals, or fixed + rotating cameras. Drag the handles in the viewport (Shift-drag = height); numbers below.</div>
+      <div class="hint" id="tracks-hint">Lines, circles/ovals, curves or fixed + rotating cameras. Drag the handles (Shift-drag or the cyan Y handle = height; X/Y/Z = axis lock); numbers below.</div>
     </div>
 
     <div class="panel">
@@ -354,12 +379,16 @@ select.sel { font-family: var(--sans); }
     <div id="model-note">no model loaded</div>
     <div id="vp-toolbar">
       <button class="vp-btn on" id="btn-grid" title="Toggle grid (G)">GRID</button>
-      <button class="vp-btn on" id="btn-paths" title="Toggle path overlays (P)">PATHS</button>
+      <button class="vp-btn on" id="btn-paths" title="Toggle path overlays (L)">PATHS</button>
       <button class="vp-btn on" id="btn-pip" title="Toggle track-cam preview (C)">TRACK CAM</button>
-      <button class="vp-btn on" id="btn-smooth" title="Toggle smooth camera turns (S)">SMOOTH</button>
+      <button class="vp-btn on" id="btn-smooth" title="Toggle smooth camera turns (T)">SMOOTH</button>
+      <button class="vp-btn" id="btn-pointer" title="Pointer mode — temporary inspection point, never saved (P)">POINTER</button>
+      <button class="vp-btn" id="btn-lock-x" title="Lock point movement to the X axis (X)">X</button>
+      <button class="vp-btn" id="btn-lock-y" title="Lock point movement to the Y axis (Y)">Y</button>
+      <button class="vp-btn" id="btn-lock-z" title="Lock point movement to the Z axis (Z)">Z</button>
       <button class="vp-btn" id="btn-help" title="Help (H)">HELP</button>
     </div>
-    <div id="pip-box"><div id="pip-label">TRACK CAM</div></div>
+    <div id="pip-box"><div id="pip-label">TRACK CAM</div><div id="pip-tools"><button class="pip-btn" id="pip-expand" title="Expand / restore the camera preview (V)">EXPAND</button></div></div>
     <div id="playbar">
       <button class="btn primary" id="btn-play">Play</button>
       <button class="btn" id="btn-playall">Play all</button>
@@ -375,6 +404,7 @@ select.sel { font-family: var(--sans); }
       <span class="pb-lab" title="max camera turn rate while SMOOTH is on">turn °/s</span>
       <input type="number" id="turn-rate" min="10" max="720" step="10" value="160">
     </div>
+    <div id="nav-hud"></div>
     <div id="toast-root"></div>
     <div id="boot"><div class="spin"></div><div id="boot-msg">loading three.js from cdn&hellip;</div></div>
   </main>
@@ -408,8 +438,9 @@ const DOC_STRING =
   'Parametric constant-speed camera tracks. line: pos(t)=start+s(t)*(end-start). ' +
   'circle: theta deg, pos(t)=center+[radiusX*cos(theta),0,radiusZ*sin(theta)], y=center[1]. ' +
   'fixed: pos=position, yaw/pitch advance by *SpeedDegS with optional *MinDeg/*MaxDeg boundaries. ' +
+  'curve: uniform Catmull-Rom spline through points[] (end tangents duplicated by clamping); a fixed 64-samples-per-segment chord table plus a monotone cubic Hermite (Fritsch-Carlson) refinement maps traveled distance to the spline parameter, pos(t) is the exact spline point (C1-smooth) at constant speedMS; lookMode path uses the analytic spline derivative. ' +
   'loopMode: loop wraps, pingPong mirrors at ends, once stops at end. ' +
-  'Orientation: lookAt point when lookMode is center|point|path, else fixed yaw/pitch (YXZ Euler, +Y up, pitch positive = up). ' +
+  'Orientation: lookAt point when lookMode is center|point|path; lookMode "normal" looks along N=normalize(cross(T,up)) with T the travel tangent (reversed on the pingPong return leg, same rule as path) and up=+Y, so N is horizontal and perpendicular to T (T parallel to up falls back to cross(T,+Z), then cross(T,+X)); normalDirection "forward"|"backward" selects +N|-N; else fixed yaw/pitch (YXZ Euler, +Y up, pitch positive = up). ' +
   'Units: meters / degrees / seconds. Coordinates are the glTF file own world space (identity transform). ' +
   'durationSec is informational (one playback cycle).';
 
@@ -423,6 +454,7 @@ const dist3 = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
 const lerp3 = (a, b, s) => [a[0] + (b[0] - a[0]) * s, a[1] + (b[1] - a[1]) * s, a[2] + (b[2] - a[2]) * s];
 const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 function normSafe(d) { const L = Math.hypot(d[0], d[1], d[2]); return L > 1e-9 ? [d[0] / L, d[1] / L, d[2] / L] : [0, 0, -1]; }
 function h(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
 
@@ -442,7 +474,13 @@ function showModal(opts) {
   foot.innerHTML = '';
   (opts.buttons || []).forEach(b => {
     const btn = h('button', 'btn' + (b.cls ? ' ' + b.cls : ''), esc(b.label));
-    btn.addEventListener('click', () => { closeModal(); if (b.onClick) b.onClick(); });
+    btn.addEventListener('click', () => {
+      /* detach onClose first: a button click is a decision, not a dismissal —
+         otherwise confirmDialog() would resolve false even for "Continue" */
+      modalOnClose = null;
+      closeModal();
+      if (b.onClick) b.onClick();
+    });
     foot.appendChild(btn);
   });
   modalOnClose = opts.onClose || null;
@@ -479,6 +517,7 @@ const state = {
   t: 0,                 // seconds inside current cycle
   rate: 1,
   showGrid: true, showPaths: true, showPip: true,
+  lockAxis: null,          /* editor-only: 'x' | 'y' | 'z' | null — never serialized */
   dirty: false, exported: true
 };
 
@@ -538,6 +577,7 @@ function makeTrack(type) {
     t.speedMS = r4(Math.max(dist3(t.start, t.end) / 12, 0.05));
     t.loopMode = 'pingPong';
     t.lookMode = 'path';
+    t.normalDirection = 'forward';
     t.lookAt = [r4(c[0]), y, r4(c[2])];
     t.yawDeg = 0; t.pitchDeg = 0;
     t.name = nextName('Line');
@@ -551,9 +591,26 @@ function makeTrack(type) {
     t.arcBounds = false; t.arcMinDeg = -90; t.arcMaxDeg = 90;
     t.loopMode = 'loop';
     t.lookMode = 'center';
+    t.normalDirection = 'forward';
     t.lookAt = t.center.slice();
     t.yawDeg = 0; t.pitchDeg = 0;
     t.name = nextName('Circle');
+  } else if (type === 'curve') {
+    const dx = Math.max(s[0] * 0.3, 0.5);
+    const dz = Math.max(s[2] * 0.22, 0.3);
+    t.points = [
+      [r4(c[0] - dx), y, r4(c[2])],
+      [r4(c[0]), y, r4(c[2] + dz)],
+      [r4(c[0] + dx), y, r4(c[2])]
+    ];
+    const L0 = dist3(t.points[0], t.points[1]) + dist3(t.points[1], t.points[2]);
+    t.speedMS = r4(Math.max(L0 / 12, 0.05));
+    t.loopMode = 'pingPong';
+    t.lookMode = 'path';
+    t.normalDirection = 'forward';
+    t.lookAt = [r4(c[0]), y, r4(c[2])];
+    t.yawDeg = 0; t.pitchDeg = 0;
+    t.name = nextName('Curve');
   } else {
     t.position = [r4(c[0] + Math.max(s[0] * 0.25, 0.4)), y, r4(c[2])];
     const d = [c[0] - t.position[0], 0, c[2] - t.position[2]];
@@ -591,6 +648,155 @@ function angleAt(t, a0, w, dir, min, max, mode) {
   return ((k % 2) + 2) % 2 === 0 ? min + r : max - r;
 }
 
+/* ============================================== curve math (Catmull-Rom)
+   Uniform Catmull-Rom spline through the anchor points. A fixed
+   64-samples-per-segment arc-length table (K is a camdat format constant)
+   maps traveled distance to the spline parameter; playback then evaluates
+   the EXACT spline polynomial at that parameter, so motion is both
+   constant-speed and C1-smooth (no polyline corners), and lookMode 'path'
+   uses the ANALYTIC spline derivative — a tangent that rotates
+   continuously instead of stair-stepping between chord directions.
+   All pure functions of points[] — bit-reproducible in any consumer
+   (see Help). No freehand drawing — the anchors are the only stored data. */
+const CURVE_SAMPLES = 64;   /* fixed by the camdat format — do not change */
+const curveCache = new WeakMap();   /* tr -> {sig, lut}: editor-side memo of a pure function (kills per-frame GC churn; never serialized) */
+function catmullRom(p0, p1, p2, p3, u) {
+  const u2 = u * u, u3 = u2 * u;
+  const out = [0, 0, 0];
+  for (let i = 0; i < 3; i++) {
+    out[i] = 0.5 * (2 * p1[i] + (-p0[i] + p2[i]) * u +
+      (2 * p0[i] - 5 * p1[i] + 4 * p2[i] - p3[i]) * u2 +
+      (-p0[i] + 3 * p1[i] - 3 * p2[i] + p3[i]) * u3);
+  }
+  return out;
+}
+/* analytic derivative of catmullRom() w.r.t. u — the exact path tangent */
+function catmullRomTangent(p0, p1, p2, p3, u) {
+  const u2 = u * u;
+  const out = [0, 0, 0];
+  for (let i = 0; i < 3; i++) {
+    out[i] = 0.5 * ((-p0[i] + p2[i]) +
+      2 * (2 * p0[i] - 5 * p1[i] + 4 * p2[i] - p3[i]) * u +
+      3 * (-p0[i] + 3 * p1[i] - 3 * p2[i] + p3[i]) * u2);
+  }
+  return out;
+}
+function curveLUT(tr) {
+  /* memoized on the track object with a points[] signature: identical
+     numbers to a fresh build, but rebuilt only when anchors change — not
+     ~3x per frame (evalTrack / cycleDuration / PiP) as before   */
+  const sig = tr.points.map(p => p.join(',')).join(';');
+  const hit = curveCache.get(tr);
+  if (hit && hit.sig === sig) return hit.lut;
+  const P = tr.points, n = P.length;
+  const samples = [], cum = [];
+  let total = 0;
+  const at = i => P[clamp(i, 0, n - 1)];
+  for (let s = 0; s < n - 1; s++) {
+    for (let j = 0; j < CURVE_SAMPLES; j++) {
+      const p = catmullRom(at(s - 1), at(s), at(s + 1), at(s + 2), j / CURVE_SAMPLES);
+      if (samples.length) total += dist3(samples[samples.length - 1], p);
+      cum.push(total);
+      samples.push(p);
+    }
+  }
+  const end = P[n - 1].slice();          /* u=1 of the last segment == last anchor */
+  total += dist3(samples[samples.length - 1], end);
+  cum.push(total);
+  samples.push(end);
+  /* per-sample slope dx/dd for the monotone cubic Hermite (d -> x) map:
+     the EXACT instantaneous rate K/|dseg(u_i)| from the analytic derivative
+     (finite differences would smooth away rate changes that sit exactly AT
+     anchor knots); chord-secant fallback for degenerate derivatives.
+     This keeps the distance-to-parameter conversion C1 across table
+     intervals, so playback speed is continuous (no per-chord steps).  */
+  const N1 = samples.length;
+  const ms = new Array(N1).fill(0);
+  for (let i = 0; i < N1; i++) {
+    const sg = Math.min(Math.floor(i / CURVE_SAMPLES), n - 2);
+    const u = (i - sg * CURVE_SAMPLES) / CURVE_SAMPLES;
+    const dv = catmullRomTangent(at(sg - 1), at(sg), at(sg + 1), at(sg + 2), u);
+    const L = Math.hypot(dv[0], dv[1], dv[2]);
+    if (L > 1e-9) ms[i] = CURVE_SAMPLES / L;
+    else {
+      let a, b;                            /* cum[i-1] .. cum[i+1], one-sided at the ends */
+      if (i === 0) { a = cum[0]; b = N1 > 1 ? cum[1] : cum[0] + 1; }
+      else if (i === N1 - 1) { a = cum[N1 - 2]; b = cum[N1 - 1]; }
+      else { a = cum[i - 1]; b = cum[i + 1]; }
+      const w = b - a;
+      ms[i] = w > 1e-12 ? (i === 0 || i === N1 - 1 ? 1 / w : 2 / w) : 0;
+    }
+  }
+  const lut = { samples, cum, total, K: CURVE_SAMPLES, P, n, ms };
+  curveCache.set(tr, { sig, lut });
+  return lut;
+}
+/* arc-length d -> spline parameter: binary-search the table, then refine the
+   in-interval fraction f with a MONOTONE CUBIC HERMITE (Fritsch-Carlson
+   clamped) so x(d) is C1 across intervals — the mapping speed du/dd stays
+   continuous, eliminating per-chord speed steps while remaining a pure,
+   documented, bit-reproducible function. Position AND tangent use the same
+   (s, u) so the look direction always matches the motion.                  */
+function curveParamAt(lut, d) {
+  const { cum, K, n, ms } = lut;
+  d = clamp(d, 0, lut.total);
+  let lo = 0, hi = cum.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= d) lo = mid; else hi = mid; }
+  const span = cum[hi] - cum[lo];
+  const f = span > 1e-12 ? (d - cum[lo]) / span : 0;
+  /* h(0)=0, h(1)=1, h'(0)=M0, h'(1)=M1 in x-units-per-interval; the clamp
+     (M0, M1 >= 0 and M0 + M1 <= 3) guarantees h is strictly monotone     */
+  let M0 = Math.max(ms[lo], 0) * span, M1 = Math.max(ms[hi], 0) * span;
+  const mSum = M0 + M1;
+  if (mSum > 3) { M0 *= 3 / mSum; M1 *= 3 / mSum; }
+  const f2 = f * f, f3 = f2 * f;
+  const x = lo + (f3 - 2 * f2 + f) * M0 + (-2 * f3 + 3 * f2) + (f3 - f2) * M1;
+  let seg = Math.floor(x / K);
+  if (seg > n - 2) seg = n - 2;                    /* d at/after the very end */
+  const u = clamp((x - seg * K) / K, 0, 1);
+  return { seg, u, lo };
+}
+function curvePosAt(lut, d) {
+  const { P, n } = lut;
+  const { seg, u } = curveParamAt(lut, d);
+  const at = i => P[clamp(i, 0, n - 1)];
+  return catmullRom(at(seg - 1), at(seg), at(seg + 1), at(seg + 2), u);
+}
+function curveTangentAt(lut, d) {
+  const { P, n, samples } = lut;
+  const { seg, u, lo } = curveParamAt(lut, d);
+  const at = i => P[clamp(i, 0, n - 1)];
+  let t = catmullRomTangent(at(seg - 1), at(seg), at(seg + 1), at(seg + 2), u);
+  if (Math.hypot(t[0], t[1], t[2]) < 1e-9) {
+    /* degenerate derivative (e.g. duplicated anchors): fall back to the
+       table chord at lo, else the next non-zero chord along the path    */
+    for (let k = lo; k < samples.length - 1; k++) {
+      const c = sub3(samples[k + 1], samples[k]);
+      if (Math.hypot(c[0], c[1], c[2]) > 1e-9) { t = c; break; }
+    }
+  }
+  return normSafe(t);
+}
+
+/* lookMode "normal": a look direction perpendicular to the travel tangent T.
+   Convention (part of the camdat contract): N = normalize(cross(T, up))
+   with up = world +Y — the right-hand-rule side normal. By construction N
+   is perpendicular to T AND to up, so the camera always looks sideways
+   and level with the horizon; and unlike the Frenet normal it never flips
+   at inflection points or on straight (zero-curvature) stretches. A T
+   (near-)parallel to up (vertical path) falls back to cross(T, +Z), then
+   cross(T, +X) — deterministic reference axes (T cannot be parallel to
+   up and to +Z at once, so the chain always terminates). Pure function
+   of T: bit-reproducible in any consumer. backward selects -N.       */
+function normalFromTangent(T, backward) {
+  T = normSafe(T);                     /* zero/degenerate tangent -> [0,0,-1] default (same convention as lookMode path) */
+  let n = cross3(T, [0, 1, 0]);
+  if (Math.hypot(n[0], n[1], n[2]) < 1e-6) n = cross3(T, [0, 0, 1]);
+  if (Math.hypot(n[0], n[1], n[2]) < 1e-9) n = cross3(T, [1, 0, 0]);
+  n = normSafe(n);
+  return backward ? [-n[0], -n[1], -n[2]] : n;
+}
+
 function evalTrack(tr, time) {
   let pos, lookAt = null, yaw = null, pitch = null;
   if (tr.type === 'line') {
@@ -603,6 +809,11 @@ function evalTrack(tr, time) {
       const returning = tr.loopMode === 'pingPong' && (((u % 2) + 2) % 2) >= 1;
       pos = lerp3(tr.start, tr.end, s);
       lookAt = add3(pos, normSafe(returning ? sub3(tr.start, tr.end) : sub3(tr.end, tr.start)));
+    } else if (tr.lookMode === 'normal') {
+      const u = T > 0 ? time / T : 0;
+      const returning = tr.loopMode === 'pingPong' && (((u % 2) + 2) % 2) >= 1;
+      const tan = normSafe(returning ? sub3(tr.start, tr.end) : sub3(tr.end, tr.start));
+      lookAt = add3(pos, normalFromTangent(tan, tr.normalDirection === 'backward'));
     } else if (tr.lookMode === 'point') lookAt = tr.lookAt.slice();
     else { yaw = tr.yawDeg; pitch = tr.pitchDeg; }
   } else if (tr.type === 'circle') {
@@ -618,7 +829,30 @@ function evalTrack(tr, time) {
       const tx = -tr.radiusX * Math.sin(rad), tz = tr.radiusZ * Math.cos(rad);
       const L = Math.hypot(tx, tz) || 1;
       lookAt = add3(pos, [dir * tx / L, 0, dir * tz / L]);
+    } else if (tr.lookMode === 'normal') {
+      const tx = -tr.radiusX * Math.sin(rad), tz = tr.radiusZ * Math.cos(rad);
+      const L = Math.hypot(tx, tz) || 1;
+      lookAt = add3(pos, normalFromTangent([dir * tx / L, 0, dir * tz / L], tr.normalDirection === 'backward'));
     } else { yaw = tr.yawDeg; pitch = tr.pitchDeg; }
+  } else if (tr.type === 'curve') {
+    const lut = curveLUT(tr);
+    const T = lut.total / Math.max(tr.speedMS, 1e-6);
+    const s = phase01(time, T, tr.loopMode);
+    const d = s * lut.total;
+    pos = curvePosAt(lut, d);
+    if (tr.lookMode === 'path') {
+      const u = T > 0 ? time / T : 0;
+      const returning = tr.loopMode === 'pingPong' && (((u % 2) + 2) % 2) >= 1;
+      const tan = curveTangentAt(lut, d);
+      lookAt = add3(pos, returning ? [-tan[0], -tan[1], -tan[2]] : tan);
+    } else if (tr.lookMode === 'normal') {
+      const u = T > 0 ? time / T : 0;
+      const returning = tr.loopMode === 'pingPong' && (((u % 2) + 2) % 2) >= 1;
+      const tan = curveTangentAt(lut, d);
+      const tanT = returning ? [-tan[0], -tan[1], -tan[2]] : tan;
+      lookAt = add3(pos, normalFromTangent(tanT, tr.normalDirection === 'backward'));
+    } else if (tr.lookMode === 'point') lookAt = tr.lookAt.slice();
+    else { yaw = tr.yawDeg; pitch = tr.pitchDeg; }
   } else {
     pos = tr.position.slice();
     const yb = tr.yawBounds && tr.yawMaxDeg > tr.yawMinDeg;
@@ -645,6 +879,11 @@ function cycleDuration(tr) {
     }
     return tr.loopMode === 'once' ? Infinity : 360 / w;
   }
+  if (tr.type === 'curve') {
+    const L = curveLUT(tr).total;
+    const T = L / Math.max(tr.speedMS, 1e-6);
+    return tr.loopMode === 'pingPong' ? T * 2 : T;
+  }
   let T = 0;
   for (const ax of ['yaw', 'pitch']) {
     const sp = Math.abs(tr[ax + 'SpeedDegS'] || 0);
@@ -665,6 +904,7 @@ function trackToJSON(tr) {
   if (tr.type === 'line') {
     o.start = v3j(tr.start); o.end = v3j(tr.end); o.speedMS = r4(tr.speedMS);
     o.lookMode = tr.lookMode;
+    if (tr.lookMode === 'normal') o.normalDirection = tr.normalDirection === 'backward' ? 'backward' : 'forward';
     if (tr.lookMode === 'point') o.lookAt = v3j(tr.lookAt);
     if (tr.lookMode === 'fixed') { o.yawDeg = r4(tr.yawDeg); o.pitchDeg = r4(tr.pitchDeg); }
   } else if (tr.type === 'circle') {
@@ -672,6 +912,14 @@ function trackToJSON(tr) {
     o.startAngleDeg = r4(tr.startAngleDeg); o.direction = tr.direction; o.speedDegS = r4(tr.speedDegS);
     if (tr.arcBounds && tr.arcMaxDeg > tr.arcMinDeg) { o.arcMinDeg = r4(tr.arcMinDeg); o.arcMaxDeg = r4(tr.arcMaxDeg); }
     o.lookMode = tr.lookMode;
+    if (tr.lookMode === 'normal') o.normalDirection = tr.normalDirection === 'backward' ? 'backward' : 'forward';
+    if (tr.lookMode === 'point') o.lookAt = v3j(tr.lookAt);
+    if (tr.lookMode === 'fixed') { o.yawDeg = r4(tr.yawDeg); o.pitchDeg = r4(tr.pitchDeg); }
+  } else if (tr.type === 'curve') {
+    o.points = tr.points.map(v3j);
+    o.speedMS = r4(tr.speedMS);
+    o.lookMode = tr.lookMode;
+    if (tr.lookMode === 'normal') o.normalDirection = tr.normalDirection === 'backward' ? 'backward' : 'forward';
     if (tr.lookMode === 'point') o.lookAt = v3j(tr.lookAt);
     if (tr.lookMode === 'fixed') { o.yawDeg = r4(tr.yawDeg); o.pitchDeg = r4(tr.pitchDeg); }
   } else {
@@ -708,7 +956,7 @@ function vec3(v, def) {
 function pick(v, list, def) { return list.includes(v) ? v : def; }
 function sanitizeTrack(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  const type = pick(raw.type, ['line', 'circle', 'fixed'], null);
+  const type = pick(raw.type, ['line', 'circle', 'curve', 'fixed'], null);
   if (!type) return null;
   const tr = { id: typeof raw.id === 'string' && raw.id ? raw.id : newId(), type };
   tr.name = typeof raw.name === 'string' ? raw.name.slice(0, 60) : '';
@@ -719,7 +967,8 @@ function sanitizeTrack(raw) {
     tr.start = vec3(raw.start, [0, 1, 0]);
     tr.end = vec3(raw.end, [1, 1, 0]);
     tr.speedMS = Math.max(num(raw.speedMS, 1), 0.001);
-    tr.lookMode = pick(raw.lookMode, ['path', 'point', 'fixed'], 'path');
+    tr.lookMode = pick(raw.lookMode, ['path', 'point', 'fixed', 'normal'], 'path');
+    tr.normalDirection = pick(raw.normalDirection, ['forward', 'backward'], 'forward');
     tr.lookAt = vec3(raw.lookAt, [0, 1, 0]);
     tr.yawDeg = num(raw.yawDeg, 0); tr.pitchDeg = num(raw.pitchDeg, 0);
   } else if (type === 'circle') {
@@ -731,8 +980,22 @@ function sanitizeTrack(raw) {
     tr.speedDegS = Math.max(num(raw.speedDegS, 6), 0.001);
     tr.arcBounds = raw.arcMinDeg != null && raw.arcMaxDeg != null && num(raw.arcMaxDeg, 1) > num(raw.arcMinDeg, 0);
     tr.arcMinDeg = num(raw.arcMinDeg, -90); tr.arcMaxDeg = num(raw.arcMaxDeg, 90);
-    tr.lookMode = pick(raw.lookMode, ['center', 'point', 'path', 'fixed'], 'center');
+    tr.lookMode = pick(raw.lookMode, ['center', 'point', 'path', 'fixed', 'normal'], 'center');
+    tr.normalDirection = pick(raw.normalDirection, ['forward', 'backward'], 'forward');
     tr.lookAt = vec3(raw.lookAt, tr.center.slice());
+    tr.yawDeg = num(raw.yawDeg, 0); tr.pitchDeg = num(raw.pitchDeg, 0);
+  } else if (type === 'curve') {
+    const pts = [];
+    if (Array.isArray(raw.points)) for (const p of raw.points) {
+      const v = vec3(p, null);
+      if (v) pts.push(v);
+    }
+    if (pts.length < 2) return null;             /* a curve needs at least 2 anchors */
+    tr.points = pts.slice(0, 64);
+    tr.speedMS = Math.max(num(raw.speedMS, 1), 0.001);
+    tr.lookMode = pick(raw.lookMode, ['path', 'point', 'fixed', 'normal'], 'path');
+    tr.normalDirection = pick(raw.normalDirection, ['forward', 'backward'], 'forward');
+    tr.lookAt = vec3(raw.lookAt, [0, 1, 0]);
     tr.yawDeg = num(raw.yawDeg, 0); tr.pitchDeg = num(raw.pitchDeg, 0);
   } else {
     tr.position = vec3(raw.position, [0, 1, 0]);
@@ -899,6 +1162,7 @@ async function initThree() {
   raycaster = new THREE.Raycaster();
 
   buildCamBody();
+  buildPointerMarker();
   rebuildGrid();
 
   /* our pointer handlers must be registered BEFORE OrbitControls so a
@@ -948,6 +1212,72 @@ function buildCamBody() {
   camBody.visible = false;
   scene.add(camBody);
 }
+/* ---------------------------------------------------------- pointer mode
+   Temporary 3D inspection point (P key). Lives entirely outside
+   state.doc / docToJSON / autosave — it can never be saved, exported
+   or serialized into camdat.json.                                    */
+const pointer = { on: false, pos: null };
+let pointerMarker = null;
+function buildPointerMarker() {
+  pointerMarker = new THREE.Group();
+  const sph = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0x4dd0e1, depthTest: false, transparent: true, opacity: 0.98 }));
+  sph.renderOrder = 13;
+  sph.userData = { role: 'ptr', baseScale: 1 };
+  const drop = new THREE.Line(new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: 0x4dd0e1, transparent: true, opacity: 0.4, depthTest: false }));
+  drop.renderOrder = 12;
+  pointerMarker.add(sph, drop);
+  pointerMarker.userData = { sphere: sph, drop };
+  pointerMarker.visible = false;
+  gizmoRoot.add(pointerMarker);
+}
+function groundY() {
+  const g = gridGroup && gridGroup.children[0];
+  return g ? g.position.y : 0;
+}
+function updatePointerMarker() {
+  if (!pointerMarker) return;
+  const { sphere, drop } = pointerMarker.userData;
+  if (!(pointer.on && pointer.pos)) { pointerMarker.visible = false; return; }
+  pointerMarker.visible = true;
+  sphere.scale.setScalar(Math.max(handleR() * 1.15, 0.02));
+  sphere.userData.baseScale = sphere.scale.x;
+  sphere.position.set(pointer.pos[0], pointer.pos[1], pointer.pos[2]);
+  drop.geometry.dispose();
+  drop.geometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(pointer.pos[0], pointer.pos[1], pointer.pos[2]),
+    new THREE.Vector3(pointer.pos[0], groundY(), pointer.pos[2])]);
+}
+function setPointerMode(on) {
+  pointer.on = !!on;
+  if (!pointer.on) pointer.pos = null;
+  updatePointerMarker();
+  $('#btn-pointer').classList.toggle('on', pointer.on);
+  $('#gl').classList.toggle('pointer', pointer.on);
+  updateNavHud();
+  if (pointer.on) toast('Pointer mode — click the scene to drop a temporary point (never saved); drag it to read exact coordinates; Esc exits');
+  else toast('Pointer mode off');
+}
+function placePointerPoint(e) {
+  raycaster.setFromCamera(ndcFromEvent(e), orbitCam);
+  let pos = null;
+  const loaded = three.loaded.get(state.activeFile);
+  if (loaded) {
+    const hits = raycaster.intersectObject(loaded.scene, true);
+    if (hits.length) pos = [hits[0].point.x, hits[0].point.y, hits[0].point.z];
+  }
+  if (!pos) {
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -groundY());
+    const v = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(plane, v)) pos = [v.x, v.y, v.z];
+  }
+  if (pos) {
+    pointer.pos = [r4(pos[0]), r4(pos[1]), r4(pos[2])];
+    updatePointerMarker();
+    updateNavHud();
+  } else toast('Could not place a point there', 'warn');
+}
+
 /* Exact orientation the track defines for ev (smoother target). */
 function evTargetQuat(ev) {
   const q = new THREE.Quaternion();
@@ -968,10 +1298,12 @@ function evTargetQuat(ev) {
    orientation along the shortest arc at a bounded angular rate, so
    direction reversals (e.g. pingPong lookMode 'path' turnarounds) read as
    turns instead of snaps. It snaps to the exact orientation when:
-     - smoothing is disabled, or dt <= 0 (paused / scrub / edits), or
+     - dt <= 0 with no mode-switch blend active (paused / scrub / edits), or
      - the track changed, or the position jumped (seek, loop wrap, switch)
+   A look-mode / normal-direction change while paused runs a short slerp
+   blend (see lookModeChanged) instead of snapping.
    Position always follows the track exactly. */
-const turn = { enabled: true, rateDegS: 160, quat: null, trackId: null, prevPos: null };
+const turn = { enabled: true, rateDegS: 160, quat: null, trackId: null, prevPos: null, blend: null };
 function turnQuat() { if (!turn.quat) turn.quat = new THREE.Quaternion(); return turn.quat; }
 /* the actual rate limiter: rotate q toward target at <= rateDegS (deg/s). Pure w.r.t. its inputs. */
 function turnStepLimited(q, target, dt) {
@@ -982,16 +1314,31 @@ function turnStepLimited(q, target, dt) {
   return q;
 }
 function updateTrackCam(tr, dt) {
-  if (!tr) { camBody.visible = false; turn.trackId = null; turn.prevPos = null; return; }
+  if (!tr) { camBody.visible = false; turn.trackId = null; turn.prevPos = null; turn.blend = null; return; }
   const ev = evalTrack(tr, state.t);
   const target = evTargetQuat(ev);
   const q = turnQuat();
   const jumped = turn.trackId !== tr.id || !turn.prevPos ||
     dist3(turn.prevPos, ev.pos) > Math.max(activeModelInfo().diag * 0.5, 0.5);
-  if (!turn.enabled || dt <= 0 || jumped) {
-    q.copy(target);
+  if (jumped) {
+    q.copy(target);                        /* seek / loop wrap / track switch: exact */
+    turn.blend = null;
+  } else if (dt > 0 && turn.enabled) {
+    turnStepLimited(q, target, dt);        /* playing: bounded-rate approach */
+    turn.blend = null;
+  } else if (turn.blend && state.t === turn.blend.t) {
+    /* paused look-mode / normal-direction change: short editor-only slerp
+       from the pose at the switch to the (static) exact target — a smooth
+       90/180 deg rotation instead of a snap. k = 1 copies the target, so it
+       converges to the exact paused pose; scrubbing or seeking cancels it
+       (the t epoch no longer matches). Never stored in camdat.json.      */
+    const k = Math.min((performance.now() - turn.blend.t0) / turn.blend.dur, 1);
+    const e = k * k * (3 - 2 * k);         /* smoothstep: ease in and out */
+    q.slerpQuaternions(turn.blend.from, target, e);
+    if (k >= 1) turn.blend = null;
   } else {
-    turnStepLimited(q, target, dt);
+    q.copy(target);                        /* paused / scrubbed / smoothing off: exact */
+    turn.blend = null;
   }
   turn.trackId = tr.id;
   turn.prevPos = ev.pos.slice();
@@ -1000,6 +1347,16 @@ function updateTrackCam(tr, dt) {
   const s = Math.max(activeModelInfo().diag * 0.016, 0.02);
   camBody.scale.setScalar(s);
   camBody.quaternion.copy(q);
+}
+/* Called by the look-mode select / normal-side toggle: while playing, the
+   rate limiter already turns toward the new target smoothly; while paused
+   we start the short blend above. Editor-only, never serialized.        */
+function lookModeChanged() {
+  if (!state.playing && turn.quat) {
+    turn.blend = { from: turnQuat().clone(), t0: performance.now(), dur: 800, t: state.t };
+  } else {
+    turn.blend = null;
+  }
 }
 
 /* ---------------------------------------------------------------- grid */
@@ -1149,6 +1506,9 @@ function makePathGeometry(tr) {
       const th = (a0 + (a1 - a0) * i / N) * DEG;
       pts.push(new THREE.Vector3(tr.center[0] + tr.radiusX * Math.cos(th), tr.center[1], tr.center[2] + tr.radiusZ * Math.sin(th)));
     }
+  } else if (tr.type === 'curve') {
+    const lut = curveLUT(tr);
+    for (const p of lut.samples) pts.push(new THREE.Vector3(p[0], p[1], p[2]));
   } else {
     // fixed: yaw-boundary wedge (rotation boundaries visualised)
     const r = activeModelInfo().diag * 0.05;
@@ -1192,6 +1552,7 @@ function yawHandlePos(tr) {
   const yaw = tr.yawDeg * DEG;
   return [tr.position[0] - Math.sin(yaw) * L, tr.position[1], tr.position[2] - Math.cos(yaw) * L];
 }
+function railOff() { return Math.max(activeModelInfo().diag * 0.05, 0.15); }
 function buildHandles(tr, handles, color) {
   const R = handleR();
   const mk = (role, pos, col) => {
@@ -1199,18 +1560,44 @@ function buildHandles(tr, handles, color) {
     m.scale.setScalar(R);
     m.position.set(pos[0], pos[1], pos[2]);
     m.renderOrder = 11;
-    m.userData = { trackId: tr.id, role };
+    m.userData = { trackId: tr.id, role, baseScale: R };
     handles.add(m);
   };
+  /* point-style handle: draggable sphere + cyan Y-rail marker + rail line
+     (direct vertical editing — Shift-drag still works too) */
+  const mkPoint = (base, pos, col) => {
+    const off = railOff();
+    const sph = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: col, depthTest: false, transparent: true, opacity: 0.95 }));
+    sph.scale.setScalar(R);
+    sph.position.set(pos[0], pos[1], pos[2]);
+    sph.renderOrder = 11;
+    sph.userData = { trackId: tr.id, role: base, baseScale: R };
+    const ym = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0x4dd0e1, depthTest: false, transparent: true, opacity: 0.95 }));
+    ym.scale.setScalar(R * 0.8);
+    ym.position.set(pos[0], pos[1] + off, pos[2]);
+    ym.renderOrder = 11;
+    ym.userData = { trackId: tr.id, role: base + 'Y', baseScale: R * 0.8 };
+    const rail = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(pos[0], pos[1], pos[2]),
+      new THREE.Vector3(pos[0], pos[1] + off, pos[2])]), lineMat(0x4dd0e1, 0.45));
+    rail.renderOrder = 11;
+    rail.userData = { trackId: tr.id, role: base + 'Rail' };
+    handles.add(sph, ym, rail);
+  };
   if (tr.type === 'line') {
-    mk('start', tr.start, '#7fd18a');
-    mk('end', tr.end, '#e57373');
+    mkPoint('start', tr.start, '#7fd18a');
+    mkPoint('end', tr.end, '#e57373');
   } else if (tr.type === 'circle') {
-    mk('center', tr.center, color);
+    mkPoint('center', tr.center, color);
     mk('rx', [tr.center[0] + tr.radiusX, tr.center[1], tr.center[2]], '#ffb454');
     mk('rz', [tr.center[0], tr.center[1], tr.center[2] + tr.radiusZ], '#9575cd');
+  } else if (tr.type === 'curve') {
+    tr.points.forEach((p, i) => {
+      const col = i === 0 ? '#7fd18a' : (i === tr.points.length - 1 ? '#e57373' : color);
+      mkPoint('p' + i, p, col);
+    });
   } else {
-    mk('pos', tr.position, color);
+    mkPoint('pos', tr.position, color);
     mk('yaw', yawHandlePos(tr), '#ffb454');
   }
 }
@@ -1220,20 +1607,34 @@ function updateTrackVisual(tr) {
   v.line.geometry.dispose();
   v.line.geometry = makePathGeometry(tr);
   if (v.ghost) { v.ghost.geometry.dispose(); v.ghost.visible = tr.type === 'circle' && tr.arcBounds && tr.arcMaxDeg > tr.arcMinDeg; }
-  const R = handleR();
+  const R = handleR(), off = railOff();
   for (const m of v.handles.children) {
-    m.scale.setScalar(R);
     const role = m.userData.role;
-    if (role === 'start') m.position.set(tr.start[0], tr.start[1], tr.start[2]);
-    else if (role === 'end') m.position.set(tr.end[0], tr.end[1], tr.end[2]);
-    else if (role === 'center') m.position.set(tr.center[0], tr.center[1], tr.center[2]);
-    else if (role === 'rx') m.position.set(tr.center[0] + tr.radiusX, tr.center[1], tr.center[2]);
-    else if (role === 'rz') m.position.set(tr.center[0], tr.center[1], tr.center[2] + tr.radiusZ);
-    else if (role === 'pos') m.position.set(tr.position[0], tr.position[1], tr.position[2]);
-    else if (role === 'yaw') m.position.set(...yawHandlePos(tr));
+    if (role === 'rx') { if (m.isMesh) { m.scale.setScalar(R); m.userData.baseScale = R; } m.position.set(tr.center[0] + tr.radiusX, tr.center[1], tr.center[2]); continue; }
+    if (role === 'rz') { if (m.isMesh) { m.scale.setScalar(R); m.userData.baseScale = R; } m.position.set(tr.center[0], tr.center[1], tr.center[2] + tr.radiusZ); continue; }
+    if (role === 'yaw') { if (m.isMesh) { m.scale.setScalar(R); m.userData.baseScale = R; } m.position.set(...yawHandlePos(tr)); continue; }
+    const mm = /^(start|end|center|pos|p\d+)(Y)?$/.exec(role);
+    if (!mm) continue;
+    const tgt = pointTargetRef(tr, mm[1]);
+    if (!tgt) continue;
+    if (m.isMesh) {
+      const bs = mm[2] ? R * 0.8 : R;
+      m.scale.setScalar(bs);
+      m.userData.baseScale = bs;
+      m.position.set(tgt[0], tgt[1] + (mm[2] ? off : 0), tgt[2]);
+    } else {                                  /* rail line: rebuild endpoints */
+      m.geometry.dispose();
+      m.geometry = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(tgt[0], tgt[1], tgt[2]),
+        new THREE.Vector3(tgt[0], tgt[1] + off, tgt[2])]);
+    }
   }
   const sel = selTrack();
-  updateTrackCam(sel, 0);
+  /* immediate camBody refresh after edits — only while PAUSED. While playing
+     the frame loop's rate limiter owns the orientation (a dt=0 call here
+     would snap it, defeating smooth look-mode / normal-direction switches);
+     position and orientation both refresh on the very next rAF frame.   */
+  if (!state.playing) updateTrackCam(sel, 0);
 }
 
 /* ====================================================== pointer interaction */
@@ -1248,7 +1649,8 @@ function ndcFromEvent(e) {
 function handleMeshes() {
   const out = [];
   visuals.forEach(v => { if (v.handles.visible) out.push(...v.handles.children); });
-  return out;
+  if (pointer.on && pointerMarker && pointerMarker.visible) out.push(pointerMarker.userData.sphere);
+  return out.filter(o => o.isMesh);            /* rail lines are not grabbable */
 }
 function pathLines() {
   const out = [];
@@ -1268,16 +1670,9 @@ function castPaths(e) {
   return hits[0] || null;
 }
 
-function onCanvasDown(e) {
-  if (e.button !== 0) return;
-  downInfo = { x: e.clientX, y: e.clientY, t: performance.now() };
-  const hit = castHandles(e);
-  if (!hit) return;
-  const { trackId, role } = hit.object.userData;
-  const tr = activeTracks().find(t => t.id === trackId);
-  if (!tr) return;
-  const vertical = e.shiftKey;
-  const pos = hit.object.position;
+function startDrag(e, hitObj, tr, role) {
+  const vertical = e.shiftKey || /(Y)$/.test(role);
+  const pos = hitObj.position;
   let plane;
   if (vertical) {
     const n = orbitCam.position.clone().sub(pos.clone());
@@ -1288,14 +1683,47 @@ function onCanvasDown(e) {
   } else {
     plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -pos.y);
   }
-  drag = { trackId, role, plane, vertical };
+  drag = { trackId: tr ? tr.id : null, role, plane, vertical };
   controls.enabled = false;
   $('#gl').classList.add('dragging');
   $('#gl').setPointerCapture(e.pointerId);
-  updateDragHint(e, tr, role);
+}
+function onCanvasDown(e) {
+  if (e.button !== 0) return;
+  /* Alt+click = curve editing ops (insert point on path / remove anchor) */
+  if (e.altKey && curveAltEdit(e)) return;
+  const hit = castHandles(e);
+  if (hit) {
+    const { trackId, role } = hit.object.userData;
+    if (role === 'ptr') {                      /* temporary pointer point */
+      if (pointer.on) startDrag(e, hit.object, null, 'ptr');
+      return;
+    }
+    const tr = activeTracks().find(t => t.id === trackId);
+    if (!tr) return;
+    startDrag(e, hit.object, tr, role);
+    updateDragHint(e, tr, role);
+    return;
+  }
+  if (pointer.on) {                            /* empty click: drop the temp point */
+    placePointerPoint(e);
+    return;
+  }
+  downInfo = { x: e.clientX, y: e.clientY, t: performance.now() };
 }
 function onPointerMove(e) {
   if (drag) {
+    if (drag.role === 'ptr') {                 /* temporary pointer point — never marks dirty */
+      raycaster.setFromCamera(ndcFromEvent(e), orbitCam);
+      const p = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(drag.plane, p)) {
+        pointer.pos = applyLockedMove(pointer.pos || [0, 0, 0], p, drag.vertical);
+        updatePointerMarker();
+        updateDragHint(e, null, 'ptr');
+        updateNavHud();
+      }
+      return;
+    }
     const tr = activeTracks().find(t => t.id === drag.trackId);
     if (!tr) return;
     raycaster.setFromCamera(ndcFromEvent(e), orbitCam);
@@ -1311,9 +1739,9 @@ function onPointerMove(e) {
   }
   if (e.target === $('#gl')) {
     const hit = castHandles(e);
-    if (hoverHandle && hoverHandle !== (hit && hit.object)) hoverHandle.scale.setScalar(handleR());
+    if (hoverHandle && hoverHandle !== (hit && hit.object)) hoverHandle.scale.setScalar(hoverHandle.userData.baseScale || handleR());
     hoverHandle = hit ? hit.object : null;
-    if (hoverHandle) hoverHandle.scale.setScalar(handleR() * 1.4);
+    if (hoverHandle) hoverHandle.scale.setScalar((hoverHandle.userData.baseScale || handleR()) * 1.4);
     $('#gl').classList.toggle('handle', !!hoverHandle);
   }
 }
@@ -1326,7 +1754,7 @@ function onPointerUp(e) {
     renderTrackList();
     return;
   }
-  if (downInfo && e.button === 0) {
+  if (downInfo && e.button === 0 && !pointer.on) {
     const moved = Math.hypot(e.clientX - downInfo.x, e.clientY - downInfo.y);
     const dt = performance.now() - downInfo.t;
     if (moved < 6 && dt < 500) {
@@ -1337,11 +1765,44 @@ function onPointerUp(e) {
   }
   downInfo = null;
 }
+/* live array behind a point-style handle (start/end/center/pos/curve anchor) */
+function pointTargetRef(tr, base) {
+  if (!tr) return null;
+  if (tr.type === 'line') return base === 'start' ? tr.start : base === 'end' ? tr.end : null;
+  if (tr.type === 'circle') return base === 'center' ? tr.center : null;
+  if (tr.type === 'fixed') return base === 'pos' ? tr.position : null;
+  if (tr.type === 'curve') {
+    const m = /^p(\d+)$/.exec(base);
+    return m && +m[1] < tr.points.length ? tr.points[+m[1]] : null;
+  }
+  return null;
+}
+/* axis-locked point move: locked components are copied bit-exact, so they
+   can never drift from rounding/snapping — only the free axis changes    */
+function applyLockedMove(cur, p, vertical) {
+  const n = [cur[0], cur[1], cur[2]];
+  const lock = state.lockAxis;
+  if (!lock) {
+    if (vertical) n[1] = p.y; else { n[0] = p.x; n[2] = p.z; }
+  } else if (lock === 'x') n[0] = p.x;
+  else if (lock === 'z') n[2] = p.z;
+  else if (vertical) n[1] = p.y;               /* lock 'y': only vertical drags move */
+  return n;
+}
 function applyHandleDrag(tr, role, p, vertical) {
-  if (role === 'start' || role === 'end' || role === 'center' || role === 'pos') {
-    const key = role === 'pos' ? 'position' : role;
-    const cur = tr[key];
-    tr[key] = vertical ? [cur[0], p.y, cur[2]] : [p.x, cur[1], p.z];
+  if (role === 'ptr') {
+    if (pointer.pos) pointer.pos = applyLockedMove(pointer.pos, p, vertical);
+    return;
+  }
+  const mm = /^(start|end|center|pos|p\d+)(Y)?$/.exec(role);
+  if (mm) {
+    const tgt = pointTargetRef(tr, mm[1]);
+    if (tgt) {
+      const vert = mm[2] ? true : vertical;    /* Y-rail handle: vertical only */
+      if (mm[2] && state.lockAxis && state.lockAxis !== 'y') return;  /* rail inert when X/Z locked */
+      const nv = applyLockedMove(tgt, p, vert);
+      tgt[0] = nv[0]; tgt[1] = nv[1]; tgt[2] = nv[2];
+    }
   } else if (role === 'rx') {
     tr.radiusX = Math.max(Math.abs(p.x - tr.center[0]), 0.02);
   } else if (role === 'rz') {
@@ -1354,19 +1815,141 @@ function applyHandleDrag(tr, role, p, vertical) {
 function updateDragHint(e, tr, role) {
   const el = $('#drag-hint');
   let txt;
-  if (role === 'rx') txt = 'radiusX ' + tr.radiusX.toFixed(3) + ' m';
+  if (role === 'ptr') {
+    const v = pointer.pos || [0, 0, 0];
+    txt = 'ptr  x ' + v[0].toFixed(3) + '  y ' + v[1].toFixed(3) + '  z ' + v[2].toFixed(3) + ' m (temporary)';
+  } else if (role === 'rx') txt = 'radiusX ' + tr.radiusX.toFixed(3) + ' m';
   else if (role === 'rz') txt = 'radiusZ ' + tr.radiusZ.toFixed(3) + ' m';
   else if (role === 'yaw') txt = 'yaw ' + tr.yawDeg.toFixed(1) + '\u00b0';
   else {
-    const v = role === 'pos' ? tr.position : tr[role];
+    const mm = /^(start|end|center|pos|p\d+)(Y)?$/.exec(role);
+    const v = mm ? pointTargetRef(tr, mm[1]) : null;
+    if (!v) { hideDragHint(); return; }
     txt = 'x ' + v[0].toFixed(3) + '  y ' + v[1].toFixed(3) + '  z ' + v[2].toFixed(3) + ' m';
   }
-  el.textContent = txt + (drag && drag.vertical ? '  (height)' : '');
+  let suffix = drag && drag.vertical ? '  (height)' : '';
+  if (/(Y)$/.test(role)) suffix = '  (Y only)';
+  if (state.lockAxis) suffix += '  [lock ' + state.lockAxis.toUpperCase() + ']';
+  el.textContent = txt + suffix;
   el.style.display = 'block';
   el.style.left = (e.clientX + 16) + 'px';
   el.style.top = (e.clientY + 18) + 'px';
 }
 function hideDragHint() { $('#drag-hint').style.display = 'none'; }
+
+/* =============================================== curve anchor edit (Alt) */
+function afterCurveStructureChange(tr) {
+  rebuildVisuals();
+  renderTrackList();
+  renderProps();
+  updatePlaybarUI();
+  markDirty();
+}
+function insertCurvePoint(tr, pt) {
+  const lut = curveLUT(tr);
+  let best = 0, bd = Infinity;
+  const q = [pt.x, pt.y, pt.z];
+  lut.samples.forEach((s, i) => { const d = dist3(s, q); if (d < bd) { bd = d; best = i; } });
+  const seg = Math.floor(best / lut.K);
+  tr.points.splice(seg + 1, 0, [r4(pt.x), r4(pt.y), r4(pt.z)]);
+  afterCurveStructureChange(tr);
+  toast('Curve point inserted (' + tr.points.length + ' points)');
+}
+function removeCurvePoint(tr, i) {
+  if (tr.points.length <= 2) { toast('A curve needs at least two points', 'warn'); return; }
+  tr.points.splice(i, 1);
+  afterCurveStructureChange(tr);
+  toast('Curve point removed (' + tr.points.length + ' points)');
+}
+function appendCurvePoint(tr) {
+  const n = tr.points.length;
+  const last = tr.points[n - 1], prev = tr.points[n - 2] || [last[0] - 1, last[1], last[2]];
+  let d = sub3(last, prev);
+  let L = Math.hypot(d[0], d[1], d[2]);
+  if (L < 1e-6) { d = [0.5, 0, 0]; L = 0.5; }
+  const step = Math.max(L * 0.5, 0.1);
+  tr.points.push([r4(last[0] + d[0] / L * step), r4(last[1] + d[1] / L * step), r4(last[2] + d[2] / L * step)]);
+  afterCurveStructureChange(tr);
+}
+/* Alt+click: on the curve path -> insert a point; on an anchor -> remove it */
+function curveAltEdit(e) {
+  const hitH = castHandles(e);
+  if (hitH) {
+    const { trackId, role } = hitH.object.userData;
+    const tr = activeTracks().find(t => t.id === trackId);
+    if (tr && tr.type === 'curve' && /^p(\d+)$/.test(role)) {
+      removeCurvePoint(tr, +role.slice(1));
+      return true;
+    }
+    return false;
+  }
+  const hitL = castPaths(e);
+  if (hitL) {
+    const tr = activeTracks().find(t => t.id === hitL.object.userData.trackId);
+    if (tr && tr.type === 'curve') { insertCurvePoint(tr, hitL.point); return true; }
+  }
+  return false;
+}
+
+/* ==================================================== fly navigation (WASD)
+   Moves the editor camera only — never touches track data or the camdat
+   document. W/A/S/D = move, Q/E = down/up, along the camera's horizontal
+   heading. Suppressed while typing in inputs or while a modal is open.  */
+const fly = { keys: new Set() };
+function flyBlocked() {
+  const a = document.activeElement;
+  return !!drag || !!(a && a.matches && a.matches('input, select, textarea')) ||
+    $('#modal-root').classList.contains('show');
+}
+window.addEventListener('keydown', e => {
+  if (e.target && e.target.matches && e.target.matches('input, select, textarea')) return;
+  if ($('#modal-root').classList.contains('show')) return;
+  const k = e.key.toLowerCase();
+  if (['w', 'a', 's', 'd', 'q', 'e'].includes(k)) fly.keys.add(k);
+});
+window.addEventListener('keyup', e => fly.keys.delete(e.key.toLowerCase()));
+window.addEventListener('blur', () => fly.keys.clear());
+function tickFly(dt) {
+  if (!fly.keys.size || flyBlocked()) return;
+  const dir = new THREE.Vector3();
+  orbitCam.getWorldDirection(dir);
+  const fwd = new THREE.Vector3(dir.x, 0, dir.z);
+  if (fwd.lengthSq() < 1e-8) fwd.set(0, 0, -1);
+  fwd.normalize();
+  const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+  const delta = new THREE.Vector3();
+  if (fly.keys.has('w')) delta.add(fwd);
+  if (fly.keys.has('s')) delta.sub(fwd);
+  if (fly.keys.has('d')) delta.add(right);
+  if (fly.keys.has('a')) delta.sub(right);
+  if (fly.keys.has('e')) delta.y += 1;
+  if (fly.keys.has('q')) delta.y -= 1;
+  if (delta.lengthSq() > 1e-9) {
+    const sp = Math.max(activeModelInfo().diag * 0.4, 0.5);
+    delta.normalize().multiplyScalar(sp * dt);
+    orbitCam.position.add(delta);
+    controls.target.add(delta);                /* translate the orbit pivot too — pure pan */
+  }
+}
+/* live coordinate + angle readout (bottom-left HUD; pointer point too) */
+function updateNavHud() {
+  const el = $('#nav-hud');
+  if (!el) return;
+  const dir = new THREE.Vector3();
+  orbitCam.getWorldDirection(dir);
+  const yawDeg = Math.atan2(-dir.x, -dir.z) / DEG;
+  const pitchDeg = Math.asin(clamp(dir.y, -1, 1)) / DEG;
+  const p = orbitCam.position;
+  let txt = 'cam  x ' + p.x.toFixed(3) + '  y ' + p.y.toFixed(3) + '  z ' + p.z.toFixed(3) + ' m' +
+    '\n     yaw ' + yawDeg.toFixed(1) + '\u00b0  pitch ' + pitchDeg.toFixed(1) + '\u00b0';
+  if (pointer.on) {
+    txt += pointer.pos
+      ? '\nptr  x ' + pointer.pos[0].toFixed(3) + '  y ' + pointer.pos[1].toFixed(3) + '  z ' + pointer.pos[2].toFixed(3) + ' m'
+      : '\nptr  — click the scene to place a point';
+  }
+  if (state.lockAxis) txt += '\nlock ' + state.lockAxis.toUpperCase() + ' \u2014 dragging moves that axis only';
+  el.textContent = txt;
+}
 
 /* ================================================================ playback */
 function playTarget() {
@@ -1505,11 +2088,13 @@ function startRenderLoop() {
   function frame() {
     requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.1);
+    tickFly(dt);
     controls.update();
     tickPlayback(dt);
     const tr = playTarget() || selTrack();
     updateTrackCam(tr, state.playing ? dt : 0);   /* dt>0 only while playing: smoothing is playback-only */
     render();
+    updateNavHud();
     uiAcc += dt;
     if (uiAcc > 0.1) { uiAcc = 0; if (tr) updatePlaybarUI(); }
   }
@@ -1562,11 +2147,13 @@ function renderTrackList() {
   $('#btn-add-line').disabled = noModel;
   $('#btn-add-circle').disabled = noModel;
   $('#btn-add-fixed').disabled = noModel;
+  $('#btn-add-curve').disabled = noModel;
   tracks.forEach(tr => {
     const row = h('div', 'track-row' + (tr.id === state.selection ? ' sel' : '') + (tr.enabled === false ? ' off' : ''));
     const T = cycleDuration(tr);
     let sub = tr.type.toUpperCase() + ' \u00b7 ' + durText(T);
     if (tr.type === 'line') sub += ' \u00b7 ' + tr.speedMS + ' m/s';
+    else if (tr.type === 'curve') sub += ' \u00b7 ' + tr.speedMS + ' m/s \u00b7 ' + tr.points.length + ' pts';
     else if (tr.type === 'circle') {
       sub += ' \u00b7 ' + tr.speedDegS + '\u00b0/s' +
         (tr.arcBounds && tr.arcMaxDeg > tr.arcMinDeg ? ' \u00b7 arc ' + tr.arcMinDeg + '\u2026' + tr.arcMaxDeg + '\u00b0' : ' \u00b7 r' + tr.radiusX + (tr.radiusZ !== tr.radiusX ? '\u00d7' + tr.radiusZ : ''));
@@ -1741,6 +2328,28 @@ function checkRow(label, get, set) {
   row._refresh = () => { inp.checked = !!get(); };
   return row;
 }
+/* segmented control: mutually-exclusive toggle pills (e.g. Forward/Backward
+   normal). Exactly one pill carries the .on state = the active direction. */
+function segRow(label, options, get, set) {
+  const row = h('div', 'frow');
+  const lab = document.createElement('label');
+  lab.textContent = label;
+  const seg = h('div', 'seg');
+  const btns = options.map(o => {
+    const b = h('button', 'btn tiny');
+    b.type = 'button';
+    b.textContent = o.t;
+    b.dataset.v = o.v;
+    b.addEventListener('click', () => { set(o.v); onPropChanged(); sync(); });
+    seg.appendChild(b);
+    return b;
+  });
+  function sync() { btns.forEach(b => b.classList.toggle('on', b.dataset.v === get())); }
+  sync();
+  row.append(lab, seg);
+  row._refresh = sync;
+  return row;
+}
 function onPropChanged() {
   const tr = selTrack();
   if (!tr) return;
@@ -1753,7 +2362,8 @@ function onPropChanged() {
 const TYPE_NOTES = {
   line: 'Camera moves in a straight line from start to end at constant speed. pingPong travels back and forth; loop jumps back to the start.',
   circle: 'Camera rides an ellipse in the horizontal plane (radiusX = radiusZ gives a circle) around center. Optionally limit the arc for a back-and-forth sweep instead of a full lap.',
-  fixed: 'Camera stands still and rotates. yaw/pitch advance at their speeds; when boundaries are set the rotation mirrors between them (rotation boundaries).'
+  fixed: 'Camera stands still and rotates. yaw/pitch advance at their speeds; when boundaries are set the rotation mirrors between them (rotation boundaries).',
+  curve: 'Camera glides along a smooth Catmull-Rom curve through the anchor points at constant speed. Alt+click the curve to insert a point, Alt+click an anchor to remove it, drag anchors (or their cyan Y handles) to edit.'
 };
 const LOOP_OPTS = [
   { v: 'loop', t: 'loop — wrap back to start' },
@@ -1811,9 +2421,14 @@ function renderProps() {
     gh('Look direction');
     add(selectRow('Look mode', [
       { v: 'path', t: 'path — along travel' },
+      { v: 'normal', t: 'normal — sideways, perpendicular to travel' },
       { v: 'point', t: 'point — at a target' },
       { v: 'fixed', t: 'fixed — hold direction' }
-    ], () => tr.lookMode, v => { tr.lookMode = v; renderProps(); }));
+    ], () => tr.lookMode, v => { tr.lookMode = v; lookModeChanged(); renderProps(); }));
+    if (tr.lookMode === 'normal') add(segRow('Normal side', [
+      { v: 'forward', t: 'Forward normal' },
+      { v: 'backward', t: 'Backward normal' }
+    ], () => tr.normalDirection, v => { tr.normalDirection = v; lookModeChanged(); }));
     if (tr.lookMode === 'point') add(vec3Row('Look at', () => tr.lookAt, v => tr.lookAt = v, 'm'));
     if (tr.lookMode === 'fixed') {
       add(numRow('Yaw', { get: () => tr.yawDeg, set: v => tr.yawDeg = v, step: 1 }, '\u00b0'));
@@ -1840,8 +2455,44 @@ function renderProps() {
       { v: 'center', t: 'center — look at ellipse center' },
       { v: 'point', t: 'point — at a target' },
       { v: 'path', t: 'path — along travel (tangent)' },
+      { v: 'normal', t: 'normal — sideways, perpendicular to travel' },
       { v: 'fixed', t: 'fixed — hold direction' }
-    ], () => tr.lookMode, v => { tr.lookMode = v; renderProps(); }));
+    ], () => tr.lookMode, v => { tr.lookMode = v; lookModeChanged(); renderProps(); }));
+    if (tr.lookMode === 'normal') add(segRow('Normal side', [
+      { v: 'forward', t: 'Forward normal' },
+      { v: 'backward', t: 'Backward normal' }
+    ], () => tr.normalDirection, v => { tr.normalDirection = v; lookModeChanged(); }));
+    if (tr.lookMode === 'point') add(vec3Row('Look at', () => tr.lookAt, v => tr.lookAt = v, 'm'));
+    if (tr.lookMode === 'fixed') {
+      add(numRow('Yaw', { get: () => tr.yawDeg, set: v => tr.yawDeg = v, step: 1 }, '\u00b0'));
+      add(numRow('Pitch', { get: () => tr.pitchDeg, set: v => tr.pitchDeg = v, step: 1 }, '\u00b0'));
+    }
+  } else if (tr.type === 'curve') {
+    gh('Path (anchor points)');
+    tr.points.forEach((p, i) => {
+      const row = vec3Row('Point ' + i, () => tr.points[i], v => tr.points[i] = v, 'm');
+      const rm = h('button', 'btn tiny danger', '\u00d7');
+      rm.title = 'remove this point';
+      rm.style.marginLeft = '6px';
+      rm.addEventListener('click', () => removeCurvePoint(tr, i));
+      row.appendChild(rm);
+      add(row);
+    });
+    const addPt = h('button', 'btn wide', '+ add point at end');
+    addPt.addEventListener('click', () => appendCurvePoint(tr));
+    add(addPt);
+    add(numRow('Speed', { get: () => tr.speedMS, set: v => tr.speedMS = v, step: 0.1, min: 0.01 }, 'm/s'));
+    gh('Look direction');
+    add(selectRow('Look mode', [
+      { v: 'path', t: 'path — along travel (curve tangent)' },
+      { v: 'normal', t: 'normal — sideways, perpendicular to travel' },
+      { v: 'point', t: 'point — at a target' },
+      { v: 'fixed', t: 'fixed — hold direction' }
+    ], () => tr.lookMode, v => { tr.lookMode = v; lookModeChanged(); renderProps(); }));
+    if (tr.lookMode === 'normal') add(segRow('Normal side', [
+      { v: 'forward', t: 'Forward normal' },
+      { v: 'backward', t: 'Backward normal' }
+    ], () => tr.normalDirection, v => { tr.normalDirection = v; lookModeChanged(); }));
     if (tr.lookMode === 'point') add(vec3Row('Look at', () => tr.lookAt, v => tr.lookAt = v, 'm'));
     if (tr.lookMode === 'fixed') {
       add(numRow('Yaw', { get: () => tr.yawDeg, set: v => tr.yawDeg = v, step: 1 }, '\u00b0'));
@@ -1900,6 +2551,30 @@ $('#btn-preview-json').addEventListener('click', () => {
 $('#btn-add-line').addEventListener('click', () => addTrack('line'));
 $('#btn-add-circle').addEventListener('click', () => addTrack('circle'));
 $('#btn-add-fixed').addEventListener('click', () => addTrack('fixed'));
+$('#btn-add-curve').addEventListener('click', () => addTrack('curve'));
+
+/* pointer mode + axis locks */
+$('#btn-pointer').addEventListener('click', () => setPointerMode(!pointer.on));
+function setLockAxis(axis) {
+  state.lockAxis = axis || null;
+  ['x', 'y', 'z'].forEach(a => $('#btn-lock-' + a).classList.toggle('on', state.lockAxis === a));
+  updateNavHud();
+  if (state.lockAxis) toast('Axis lock ' + state.lockAxis.toUpperCase() + ' — dragged points move along that axis only (press again to unlock)');
+}
+['x', 'y', 'z'].forEach(a => {
+  $('#btn-lock-' + a).addEventListener('click', () => setLockAxis(state.lockAxis === a ? null : a));
+});
+
+/* expanded camera preview — CSS-only resize, the render pass follows the
+   pip box rect every frame; never touches path data or timing */
+let pipBig = false;
+function setPipExpanded(big) {
+  pipBig = !!big;
+  $('#pip-box').classList.toggle('big', pipBig);
+  $('#pip-expand').textContent = pipBig ? 'RESTORE' : 'EXPAND';
+  saveSettings();
+}
+$('#pip-expand').addEventListener('click', () => setPipExpanded(!pipBig));
 
 $('#btn-grid').addEventListener('click', () => {
   state.showGrid = !state.showGrid;
@@ -1938,7 +2613,7 @@ $('#rate').addEventListener('change', e => { state.rate = +e.target.value; });
 
 /* smooth-turn settings */
 function saveSettings() {
-  try { localStorage.setItem(LS_KEY + '.settings', JSON.stringify({ smoothTurns: turn.enabled, turnRateDegS: turn.rateDegS })); } catch (e) { }
+  try { localStorage.setItem(LS_KEY + '.settings', JSON.stringify({ smoothTurns: turn.enabled, turnRateDegS: turn.rateDegS, pipBig })); } catch (e) { }
 }
 function loadSettings() {
   try {
@@ -1947,6 +2622,11 @@ function loadSettings() {
       const s = JSON.parse(raw);
       if (typeof s.smoothTurns === 'boolean') turn.enabled = s.smoothTurns;
       if (isFinite(+s.turnRateDegS)) turn.rateDegS = Math.min(720, Math.max(10, +s.turnRateDegS));
+      if (typeof s.pipBig === 'boolean') {
+        pipBig = s.pipBig;
+        $('#pip-box').classList.toggle('big', pipBig);
+        $('#pip-expand').textContent = pipBig ? 'RESTORE' : 'EXPAND';
+      }
     }
   } catch (e) { }
   $('#btn-smooth').classList.toggle('on', turn.enabled);
@@ -1997,11 +2677,19 @@ window.addEventListener('keydown', e => {
       frameModel();
       break;
     case 'g': $('#btn-grid').click(); break;
-    case 'p': $('#btn-paths').click(); break;
+    case 'l': $('#btn-paths').click(); break;      /* paths overlay (was P — P is Pointer now) */
     case 'c': $('#btn-pip').click(); break;
-    case 's': $('#btn-smooth').click(); break;
+    case 't': $('#btn-smooth').click(); break;     /* smooth turns (was S — S is fly-back now) */
+    case 'p': setPointerMode(!pointer.on); break;
+    case 'x': setLockAxis(state.lockAxis === 'x' ? null : 'x'); break;
+    case 'y': setLockAxis(state.lockAxis === 'y' ? null : 'y'); break;
+    case 'z': setLockAxis(state.lockAxis === 'z' ? null : 'z'); break;
+    case 'v': if ($('#pip-box').classList.contains('show')) setPipExpanded(!pipBig); break;
     case 'h': showHelp(); break;
-    case 'escape': selectTrack(null); break;
+    case 'escape':
+      if (pointer.on) setPointerMode(false);
+      else selectTrack(null);
+      break;
   }
 });
 
@@ -2026,8 +2714,8 @@ const HELP_HTML = [
   '<h3>Quick start</h3>',
   '<ol style="margin:4px 0;padding-left:20px">',
   '<li><b>Load glTF</b> — pick a .glb (or a .gltf together with its .bin / texture files; drag &amp; drop works). The file is added to the camdat document automatically.</li>',
-  '<li><b>Add a track</b> — Line, Circle or Fixed. Sensible defaults are placed inside the model\u2019s bounds.</li>',
-  '<li><b>Drag the handles</b> in the viewport to position the path. <b>Shift-drag</b> a handle to change its height. The radius handles sit on the X and Z axes of the ellipse; the amber handle on a Fixed track sets its yaw.</li>',
+  '<li><b>Add a track</b> — Line, Circle, Curve or Fixed. Sensible defaults are placed inside the model\u2019s bounds.</li>',
+  '<li><b>Drag the handles</b> in the viewport to position the path. <b>Shift-drag</b> a handle — or drag its <b>cyan Y handle</b> — to change its height. The radius handles sit on the X and Z axes of the ellipse; the amber handle on a Fixed track sets its yaw.</li>',
   '<li><b>Tune the numbers</b> — speed, rotation boundaries, look target, FOV, loop mode.</li>',
   '<li><b>Preview</b> — select a track and press Play (or the \u25b6 button on a track row). The TRACK CAM picture-in-picture shows exactly what the track camera sees. Scrub the timeline, change the preview rate.</li>',
   '<li><b>Export camdat.json</b> — done. Import it back any time to continue editing; your work is also autosaved in the browser.</li>',
@@ -2036,15 +2724,22 @@ const HELP_HTML = [
   '<table><tr><th>Input</th><th>Action</th></tr>',
   '<tr><td>drag / wheel</td><td>orbit / zoom the editor view (does not affect tracks)</td></tr>',
   '<tr><td>click path</td><td>select that track</td></tr>',
-  '<tr><td>drag handle</td><td>move point (start/end/center/position, radii, yaw)</td></tr>',
+  '<tr><td>drag handle</td><td>move point (start/end/center/position/curve anchors, radii, yaw)</td></tr>',
   '<tr><td>Shift + drag handle</td><td>move the handle vertically (height)</td></tr>',
-  '<tr><td>Space</td><td>play / pause &nbsp;&nbsp; <b>F</b> frame model &nbsp;&nbsp; <b>G</b> grid &nbsp;&nbsp; <b>P</b> paths &nbsp;&nbsp; <b>C</b> track-cam &nbsp;&nbsp; <b>H</b> help</td></tr>',
+  '<tr><td>cyan Y handle / rail</td><td>drag the small cyan marker above a point handle to move it along Y only</td></tr>',
+  '<tr><td>W A S D / Q E</td><td>fly through the room (editor camera only — never recorded); live x/y/z + yaw/pitch read in the bottom-left HUD</td></tr>',
+  '<tr><td><b>P</b> pointer mode</td><td>click to drop a movable temporary point; its exact coordinates show in the HUD and drag hint — strictly temporary, never saved/exported. Esc exits.</td></tr>',
+  '<tr><td><b>X / Y / Z</b> axis lock</td><td>dragged points move along one axis only (press again to unlock); locked components are copied bit-exact so they never drift — easy perfectly straight lines</td></tr>',
+  '<tr><td><b>V</b> expand view</td><td>enlarge / restore the TRACK CAM preview (also the EXPAND button on the preview)</td></tr>',
+  '<tr><td>Alt + click curve</td><td>insert a curve anchor at that spot; Alt + click an anchor removes it</td></tr>',
+  '<tr><td>Space</td><td>play / pause &nbsp;&nbsp; <b>F</b> frame model &nbsp;&nbsp; <b>G</b> grid &nbsp;&nbsp; <b>L</b> paths &nbsp;&nbsp; <b>C</b> track-cam &nbsp;&nbsp; <b>T</b> smooth turns &nbsp;&nbsp; <b>H</b> help</td></tr>',
   '<tr><td>Del / Backspace</td><td>delete selected track</td></tr>',
   '<tr><td>Ctrl/Cmd + D</td><td>duplicate selected track</td></tr>',
   '</table>',
   '<h3>Track types</h3>',
   '<p><b>line</b> — straight move from <code>start</code> to <code>end</code> at <code>speedMS</code> (m/s). <b>circle</b> — rides the ellipse <code>center + [radiusX\u00b7cos\u03b8, 0, radiusZ\u00b7sin\u03b8]</code> at <code>speedDegS</code> (\u00b0/s); set <code>radiusX = radiusZ</code> for a circle; optionally bound \u03b8 with <code>arcMinDeg/arcMaxDeg</code> for a sweeping arc. <b>fixed</b> — stands at <code>position</code>; yaw/pitch rotate at their speeds, mirroring between their boundaries when set.</p>',
-  '<p>Options common to all: <b>speed</b>, <b>rotation boundaries</b> (arc limits for circles, yaw/pitch limits for fixed), <b>loopMode</b> (loop / pingPong / once), <b>lookMode</b> (center / point / path / fixed) with <code>lookAt</code>, <b>fovDeg</b>, <b>enabled</b>. All motion is constant-speed by design (no easing) — a fixed camera track.</p>',
+  '<p><b>curve</b> — a smooth path through deliberate anchor points (<code>points[]</code>, PowerPoint-style: no freehand drawing). It is a <b>uniform Catmull-Rom spline</b> that passes through every anchor; drag anchors to edit, Alt+click the path to insert one, Alt+click an anchor to remove it, or use the per-point rows/buttons in the options panel. The camera travels the <b>exact spline</b> smoothly at constant <code>speedMS</code>, looking along the continuous spline tangent (analytic derivative).</p>',
+  '<p>Options common to all: <b>speed</b>, <b>rotation boundaries</b> (arc limits for circles, yaw/pitch limits for fixed), <b>loopMode</b> (loop / pingPong / once), <b>lookMode</b> (center / point / path / normal / fixed) with <code>lookAt</code> — <code>normal</code> additionally takes <code>normalDirection</code> (forward / backward), <b>fovDeg</b>, <b>enabled</b>. All motion is constant-speed by design (no easing) — a fixed camera track.</p>',
   '<h3>camdat.json structure</h3>',
   '<pre>' + esc(JSON.stringify({
     format: 'camdat', version: 1,
@@ -2056,7 +2751,9 @@ const HELP_HTML = [
       tracks: [
         { id: 't1', name: 'Dolly', type: 'line', enabled: true, fovDeg: 60, loopMode: 'pingPong', start: [-3, 1.5, 0], end: [3, 1.5, 0], speedMS: 0.8, lookMode: 'path', durationSec: 15 },
         { id: 't2', name: 'Orbit', type: 'circle', enabled: true, fovDeg: 60, loopMode: 'loop', center: [0, 1.6, 0], radiusX: 2.5, radiusZ: 2.5, startAngleDeg: 0, direction: 'cw', speedDegS: 6, lookMode: 'center', durationSec: 60 },
-        { id: 't3', name: 'Corner pan', type: 'fixed', enabled: true, fovDeg: 60, loopMode: 'pingPong', position: [2, 1.6, 2], yawDeg: 45, pitchDeg: 0, yawSpeedDegS: 3, pitchSpeedDegS: 0, yawMinDeg: -30, yawMaxDeg: 90, durationSec: 80 }
+        { id: 't3', name: 'Corner pan', type: 'fixed', enabled: true, fovDeg: 60, loopMode: 'pingPong', position: [2, 1.6, 2], yawDeg: 45, pitchDeg: 0, yawSpeedDegS: 3, pitchSpeedDegS: 0, yawMinDeg: -30, yawMaxDeg: 90, durationSec: 80 },
+        { id: 't4', name: 'S-curve', type: 'curve', enabled: true, fovDeg: 60, loopMode: 'pingPong', points: [[-3, 1.5, 0], [-1, 1.5, 1.4], [1, 1.5, -1.2], [3, 1.5, 0.3]], speedMS: 0.8, lookMode: 'path', durationSec: 22.6 },
+        { id: 't5', name: 'Side look', type: 'curve', enabled: true, fovDeg: 60, loopMode: 'pingPong', points: [[-3, 1.5, 0], [-1, 1.5, 1.4], [1, 1.5, -1.2], [3, 1.5, 0.3]], speedMS: 0.8, lookMode: 'normal', normalDirection: 'forward', durationSec: 22.6 }
       ]
     }]
   }, null, 2)) + '</pre>',
@@ -2095,6 +2792,35 @@ const HELP_HTML = [
     '                yawMinDeg, yawMaxDeg, loopMode);   // pitch likewise',
     'pos   = position;',
     '',
+    '// CURVE (uniform Catmull-Rom through points[], K=64 samples/segment):',
+    'A[i]   = points[max(0,min(n-1,i))];               // clamp end tangents',
+    'seg(u, p0,p1,p2,p3) = 0.5*( 2*p1 + (-p0+p2)*u +',
+    '        (2*p0-5*p1+4*p2-p3)*u^2 + (-p0+3*p1-3*p2+p3)*u^3 );',
+    'dseg(u, p0,p1,p2,p3) = 0.5*( (-p0+p2) + 2*(2*p0-5*p1+4*p2-p3)*u',
+    '        + 3*(-p0+3*p1-3*p2+p3)*u^2 );             // = d/du seg(u)',
+    'S[i][j] = seg(A[i-1],A[i],A[i+1],A[i+2], j/K);    // j=0..K-1 per segment',
+    'S[end]  = points[n-1];',
+    'cum[]   = cumulative chord length over S;  L = total;  T = L/speedMS;',
+    'd       = phase01(t,T,loopMode) * L;      // constant-speed distance',
+    'i       = last index with cum[i] <= d;  f = (d-cum[i])/(cum[i+1]-cum[i]);',
+    '                        // (zero span: f = 0)',
+    'm[i]    = K/|dseg(A[i-1],A[i],A[i+1],A[i+2], u_i)|;  // u_i=(i-s*K)/K,',
+    '                        // s = min(floor(i/K), n-2)  // degenerate',
+    '                        // |dseg|: m[i] = 2/(cum[i+1]-cum[i-1]) (ends',
+    '                        // one-sided: 1/(cum[1]-cum[0]), 1/(cum[N-1]-cum[N-2]))',
+    'M0 = m[i]  *(cum[i+1]-cum[i]);   M1 = m[i+1]*(cum[i+1]-cum[i]);',
+    '         // monotone Fritsch-Carlson clamp: M0,M1 >= 0, M0+M1 <= 3',
+    'x       = i + (f^3-2f^2+f)*M0 + (-2f^3+3f^2) + (f^3-f^2)*M1;',
+    's       = floor(x/K);  u = (x - s*K)/K;       // clamp s to 0..n-2',
+    'pos     = seg(A[s-1],A[s],A[s+1],A[s+2], u);      // EXACT spline point',
+    '// lookMode "path": tangent = normalize(dseg(A[s-1],A[s],A[s+1],A[s+2],u)),',
+    '//   reversed on the pingPong return leg (same rule as line).',
+    '// lookMode "normal": T = travel tangent (reversed on pingPong return);',
+    '//   N = normalize(cross(T, up)), up = +Y -> N is horizontal and',
+    '//   perpendicular to T (T parallel to up: fall back to cross(T,+Z),',
+    '//   then cross(T,+X)); lookAt = pos + N for normalDirection "forward",',
+    '//   pos - N for "backward".',
+    '',
     '// ORIENTATION: if lookMode is center|point -\u003e lookAt(pos, lookAt or center);',
     '// if path -\u003e look along the travel direction; if fixed -\u003e YXZ Euler',
     '// (pitch about X applied after yaw about Y; pitch positive = up).',
@@ -2105,7 +2831,10 @@ const HELP_HTML = [
   '<li>Coordinates are the glTF file\u2019s own world space — load the room with an identity transform and the numbers transfer 1:1.</li>',
   '<li>Serve this page over http(s) (e.g. <code>python -m http.server</code>); ES modules do not run from file:// in most browsers. The three.js library loads from the jsDelivr CDN once per session.</li>',
   '<li>The orange line + dot on the blue camera body is the direction pointer (it replaced the old cone): it shows where the track camera is looking without blocking the TRACK CAM preview, which now renders the room without editor overlays.</li>',
-  '<li><b>Smooth turns</b> — while playing, the track camera approaches its exact orientation at a bounded turn rate (SMOOTH toolbar button, deg/s field in the playbar, key S). Paused / scrubbed / exported views are always exact. camdat.json is unchanged: consumers can reproduce the same feel with a max-rate quaternion slerp toward the track orientation, snapping on seeks and track switches.</li>',
+  '<li><b>Smooth turns</b> — while playing, the track camera approaches its exact orientation at a bounded turn rate (SMOOTH toolbar button, deg/s field in the playbar, key T). Paused / scrubbed / exported views are always exact. camdat.json is unchanged: consumers can reproduce the same feel with a max-rate quaternion slerp toward the track orientation, snapping on seeks and track switches.</li>',
+  '<li><b>Editing aids are editor-only</b> — the pointer-mode point, axis locks, WASD camera and the expanded preview never touch camdat.json: exports and autosaves contain only tracks. camdat <code>version</code> stays 1; the <code>curve</code> type is additive — older consumers that don\u2019t know it should skip unknown track types (this editor imports older files unchanged and counts skipped invalid tracks).</li>',
+  '<li><b>Normal look mode</b> — <code>lookMode: "normal"</code> points the camera sideways, perpendicular to the direction of travel: <code>N = normalize(cross(T, up))</code> with <code>up = +Y</code>. N is horizontal by construction (a level, side-looking camera) and, unlike a Frenet-frame normal, it never flips at inflection points or on straight (zero-curvature) stretches. <code>normalDirection</code> (<code>"forward"</code>, the default when absent / <code>"backward"</code>) picks +N or −N — the two options in the editor are the Forward/Backward normal pills. On a pingPong return leg the travel tangent reverses (same rule as <code>path</code>), so the side stays constant relative to travel; on a cw circle the forward normal looks inward, on ccw outward. Switching look modes or forward/backward blends the preview orientation over ~0.8 s instead of snapping (editor-only; the stored track is always exact). Fixed/rotating tracks have no travel tangent, so they do not offer the mode. The stored field is additive: files without it behave exactly as before, and consumers meeting an unknown lookMode value should fall back to their default.</li>',
+  '<li><b>Curves are deterministic</b> — the spline, the 64-samples-per-segment arc-length table, the exact-point evaluation <code>seg()</code> and the analytic tangent <code>dseg()</code> above are pure functions of <code>points[]</code>, so any consumer reproduces identical positions and orientations (smooth C1 motion, constant speed). Editing anchors (drag / insert / remove / numeric rows) only rewrites <code>points[]</code>; the stored fields and schema are unchanged.</li>',
   '<li>Autosave lives in the browser\u2019s localStorage — Export writes the portable <code>camdat.json</code>.</li>',
   '<li>The consumer program only needs <code>file</code>, <code>type</code> and the parameter fields; everything else is metadata. The formulas above are the complete contract.</li>',
   '</ul>'
@@ -2127,6 +2856,7 @@ window.__camtrack = {
   get turnInfo() {
     return {
       enabled: turn.enabled, rateDegS: turn.rateDegS,
+      blend: turn.blend ? { ageMs: Math.round(performance.now() - turn.blend.t0), durMs: turn.blend.dur } : null,
       quat: turn.quat ? turn.quat.toArray() : null, trackId: turn.trackId,
       camBodyChildren: camBody ? camBody.children.map(c => c.type + ':' + (c.geometry ? c.geometry.type : '?')) : null
     };
@@ -2138,6 +2868,7 @@ window.__camtrack = {
     $('#turn-rate').value = turn.rateDegS;
     saveSettings();
   },
+  normalFromTangent(t, dir) { return normalFromTangent([+t[0], +t[1], +t[2]], dir === 'backward'); },
   limiterStep(qa, qb, dt) {
     const q = new THREE.Quaternion().fromArray(qa), target = new THREE.Quaternion().fromArray(qb);
     turnStepLimited(q, target, dt);
@@ -2145,6 +2876,51 @@ window.__camtrack = {
   },
   stepTurn(dt) { const tr = playTarget() || selTrack(); if (!tr) return null; updateTrackCam(tr, dt); return turn.quat ? turn.quat.toArray() : null; },
   seek(t) { state.t = Math.max(0, +t || 0); },   /* set playback time without snapping the turn filter */
+  get pointerInfo() { return { on: pointer.on, pos: pointer.pos ? pointer.pos.slice() : null }; },
+  setPointerMode(on) { setPointerMode(!!on); },
+  get lockAxis() { return state.lockAxis; },
+  setLockAxis(axis) { setLockAxis(axis && axis === state.lockAxis ? null : axis); },
+  get navInfo() {
+    const d = new THREE.Vector3();
+    orbitCam.getWorldDirection(d);
+    return { pos: [orbitCam.position.x, orbitCam.position.y, orbitCam.position.z], fwd: [d.x, d.y, d.z] };
+  },
+  get hudText() { const el = $('#nav-hud'); return el ? el.textContent : ''; },
+  get pipExpanded() { return pipBig; },
+  setPipExpanded(big) { setPipExpanded(!!big); },
+  handles() {
+    const out = [];
+    visuals.forEach(v => {
+      if (!v.handles.visible) return;
+      v.handles.children.forEach(c => { if (c.isMesh) out.push({ trackId: v.id, role: c.userData.role, pos: [c.position.x, c.position.y, c.position.z] }); });
+    });
+    return out;
+  },
+  curveInsert(id, p) {
+    for (const m of state.doc.models) {
+      const tr = m.tracks.find(x => x.id === id);
+      if (tr && tr.type === 'curve') { insertCurvePoint(tr, { x: +p[0], y: +p[1], z: +p[2] }); return tr.points.length; }
+    }
+    return null;
+  },
+  curveMath(id, d) {
+    for (const m of state.doc.models) {
+      const tr = m.tracks.find(x => x.id === id);
+      if (tr && tr.type === 'curve') {
+        const lut = curveLUT(tr), dd = +d || 0;
+        const { seg, u } = curveParamAt(lut, dd);
+        return { pos: curvePosAt(lut, dd), tan: curveTangentAt(lut, dd), seg, u, total: lut.total, K: lut.K, n: tr.points.length };
+      }
+    }
+    return null;
+  },
+  curveRemovePoint(id, i) {
+    for (const m of state.doc.models) {
+      const tr = m.tracks.find(x => x.id === id);
+      if (tr && tr.type === 'curve') { removeCurvePoint(tr, +i); return tr.points.length; }
+    }
+    return null;
+  },
   project(p) {
     const v = new THREE.Vector3(p[0], p[1], p[2]).project(orbitCam);
     const r = renderer.domElement.getBoundingClientRect();
