@@ -1,0 +1,2191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CamTrack Editor — camdat.json camera track recorder</title>
+<!-- three.js + addons via CDN importmap (needs http(s) — see Help) -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+<script>
+/* boot watchdog: surfaces module/CDN load failures */
+window.__bootErrors = [];
+window.addEventListener('error', function (e) {
+  window.__bootErrors.push(String(e.message || e));
+}, true);
+window.addEventListener('unhandledrejection', function (e) {
+  window.__bootErrors.push('promise: ' + String(e.reason));
+});
+setTimeout(function () {
+  if (!window.__camtrack || !window.__camtrack.ready) {
+    var b = document.getElementById('boot-msg');
+    if (b && !window.__camtrack) {
+      b.innerHTML = 'Could not load three.js from the CDN.<br>' +
+        'Check your internet connection, then reload.<br>' +
+        '<span class="dim">' + (window.__bootErrors.slice(0, 3).join('<br>') || 'no error details') + '</span>';
+    }
+  }
+}, 15000);
+</script>
+<style>
+:root {
+  --bg: #17191f;
+  --bg2: #14161c;
+  --panel: #1e222b;
+  --panel2: #232833;
+  --border: #2a2f3b;
+  --border2: #343b4a;
+  --text: #c8d0e0;
+  --text-dim: #7d879b;
+  --head: #f2f5fa;
+  --accent: #53b9ff;
+  --accent-dim: #2a6f9e;
+  --amber: #ffb454;
+  --green: #7fd18a;
+  --red: #e57373;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, Menlo, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  overflow: hidden;
+}
+#app { display: flex; height: 100vh; }
+
+/* ================= sidebar ================= */
+#sidebar {
+  width: 372px; min-width: 372px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; scrollbar-color: var(--border2) transparent;
+}
+#sidebar::-webkit-scrollbar { width: 8px; }
+#sidebar::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+#brand { padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+#brand h1 { margin: 0; font-size: 16px; font-weight: 650; color: var(--head); letter-spacing: .2px; }
+#brand h1 .accent { color: var(--accent); }
+#brand .sub { color: var(--text-dim); font-size: 11.5px; margin-top: 3px; }
+#brand .sub b { color: var(--accent); font-family: var(--mono); font-weight: 500; }
+
+.panel { padding: 12px 16px 4px; }
+.panel-title {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+  color: var(--text-dim); margin-bottom: 8px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+/* buttons */
+.btn {
+  appearance: none; border: 1px solid var(--border2); background: var(--panel2);
+  color: var(--text); font: inherit; border-radius: 6px;
+  padding: 6px 10px; cursor: pointer; user-select: none;
+  transition: background .12s, border-color .12s, color .12s;
+  white-space: nowrap;
+}
+.btn:hover { background: #2a3040; border-color: var(--border2); color: var(--head); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--accent-dim); border-color: var(--accent-dim); color: #eaf6ff; font-weight: 600; }
+.btn.primary:hover { background: #3385ba; border-color: #3385ba; }
+.btn.ghost { background: transparent; }
+.btn.danger:hover { background: #5a2b2b; border-color: #7a3a3a; color: #ffd6d6; }
+.btn.tiny { padding: 2px 8px; font-size: 11.5px; border-radius: 5px; }
+.btn.wide { width: 100%; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+#file-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+#save-row { display: flex; align-items: center; gap: 7px; margin-top: 9px; font-size: 11.5px; color: var(--text-dim); }
+#save-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex: 0 0 auto; }
+#save-dot.dirty { background: var(--amber); }
+
+/* models list */
+.model-row {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--border); border-radius: 7px;
+  padding: 7px 9px; margin-bottom: 6px; cursor: pointer;
+  background: var(--bg2);
+}
+.model-row:hover { border-color: var(--border2); }
+.model-row.active { border-color: var(--accent-dim); background: #1b2733; }
+.mr-main { flex: 1; min-width: 0; }
+.mr-name { color: var(--head); font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-sub { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+.mr-sub .ok { color: var(--green); }
+.hint { color: var(--text-dim); font-size: 11.5px; padding: 6px 2px 8px; line-height: 1.5; }
+
+/* track add row */
+#track-add { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 9px; }
+
+/* track rows */
+.track-row {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--border); border-radius: 7px;
+  padding: 6px 8px; margin-bottom: 5px; cursor: pointer;
+  background: var(--bg2); position: relative;
+}
+.track-row:hover { border-color: var(--border2); }
+.track-row.sel { border-color: var(--accent); background: #1b2733; }
+.track-row.off { opacity: .5; }
+.chip { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
+.tr-main { flex: 1; min-width: 0; }
+.tr-name { color: var(--head); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-sub { color: var(--text-dim); font-size: 10.5px; font-family: var(--mono); margin-top: 2px; }
+.tr-btn {
+  appearance: none; border: 1px solid transparent; background: transparent; color: var(--text-dim);
+  font-size: 13px; padding: 2px 6px; border-radius: 5px; cursor: pointer; line-height: 1;
+}
+.tr-btn:hover { color: var(--head); background: var(--panel2); }
+.tr-btn.on { color: var(--accent); }
+
+/* properties panel */
+#props-empty { color: var(--text-dim); font-size: 11.5px; padding: 4px 2px 10px; line-height: 1.55; }
+.group-h {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--accent); margin: 10px 0 6px; padding-top: 8px; border-top: 1px dashed var(--border);
+}
+.group-h:first-child { margin-top: 2px; border-top: none; padding-top: 0; }
+.frow { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.frow label { flex: 0 0 118px; color: var(--text-dim); font-size: 11.5px; }
+.frow .u { color: var(--text-dim); font-size: 10.5px; font-family: var(--mono); flex: 0 0 auto; margin-left: -4px; }
+input.num, input.txt, select.sel {
+  font-family: var(--mono); font-size: 12px; color: var(--head);
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 5px;
+  padding: 4px 7px; width: 100%; min-width: 0; outline: none;
+}
+input.num { text-align: right; }
+input.num:focus, input.txt:focus, select.sel:focus { border-color: var(--accent-dim); }
+input.num.bad { border-color: var(--red); }
+select.sel { font-family: var(--sans); }
+.vec3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; flex: 1; }
+.check-row { display: flex; align-items: center; gap: 7px; margin: 4px 0 7px; color: var(--text); font-size: 12px; cursor: pointer; user-select: none; }
+.check-row input { accent-color: var(--accent); }
+.props-actions { display: flex; gap: 7px; margin: 12px 0 16px; }
+.props-actions .btn { flex: 1; }
+#track-note { color: var(--text-dim); font-size: 11px; margin: 2px 0 10px; line-height: 1.5; }
+
+/* ================= viewport ================= */
+#viewport { flex: 1; position: relative; background: var(--bg2); min-width: 0; }
+#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+#gl.dragging { cursor: grabbing; }
+#gl.handle { cursor: move; }
+
+#vp-toolbar {
+  position: absolute; top: 12px; right: 12px; display: flex; gap: 6px; z-index: 5;
+}
+.vp-btn {
+  appearance: none; border: 1px solid var(--border2); background: #1a1e26dd; color: var(--text-dim);
+  font: inherit; font-size: 11px; font-weight: 600; letter-spacing: .6px;
+  padding: 5px 10px; border-radius: 999px; cursor: pointer; backdrop-filter: blur(4px);
+}
+.vp-btn:hover { color: var(--head); }
+.vp-btn.on { color: var(--accent); border-color: var(--accent-dim); background: #16303fdd; }
+
+#model-note {
+  position: absolute; top: 12px; left: 12px; z-index: 5;
+  background: #1a1e26dd; border: 1px solid var(--border2); border-radius: 7px;
+  padding: 6px 11px; font-size: 11.5px; color: var(--text-dim);
+  max-width: 46%; backdrop-filter: blur(4px);
+}
+#model-note b { color: var(--head); font-family: var(--mono); font-weight: 500; }
+
+#drag-hint {
+  position: fixed; z-index: 40; display: none; pointer-events: none;
+  background: #10131add; border: 1px solid var(--accent-dim); color: var(--head);
+  font-family: var(--mono); font-size: 11px; border-radius: 5px; padding: 3px 8px;
+}
+
+/* PiP frame (canvas is rendered underneath via scissor) */
+#pip-box {
+  position: absolute; right: 16px; bottom: 16px; z-index: 4;
+  width: min(330px, 27vw); aspect-ratio: 16 / 9;
+  border: 1px solid #53b9ff88; border-radius: 8px;
+  box-shadow: 0 4px 24px #00000090, inset 0 0 0 1px #00000040;
+  pointer-events: none; display: none;
+}
+#pip-box.show { display: block; }
+#pip-label {
+  position: absolute; top: -1px; left: 10px; transform: translateY(-50%);
+  background: #16303f; border: 1px solid var(--accent-dim); color: #bfe2ff;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 1px;
+  padding: 2px 8px; border-radius: 999px;
+  max-width: 92%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* playback bar */
+#playbar {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 6;
+  width: min(620px, calc(100% - 380px));
+  display: none; align-items: center; gap: 9px;
+  background: #1a1e26ee; border: 1px solid var(--border2); border-radius: 10px;
+  padding: 8px 12px; backdrop-filter: blur(6px);
+}
+#playbar.show { display: flex; }
+#btn-play { width: 74px; }
+#btn-playall { font-size: 11.5px; }
+.pb-lab { color: var(--text-dim); font-size: 11px; user-select: none; white-space: nowrap; }
+#turn-rate { width: 56px; background: var(--bg2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; font-size: 11.5px; }
+#pb-name { color: var(--head); font-size: 12px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#pb-time { color: var(--text-dim); font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+#pb-time b { color: var(--text); font-weight: 500; }
+#scrub { flex: 1; accent-color: var(--accent); height: 18px; cursor: pointer; min-width: 80px; }
+#rate { width: 74px; }
+
+/* boot overlay */
+#boot {
+  position: absolute; inset: 0; z-index: 50; background: var(--bg2);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+}
+#boot.done { display: none; }
+.spin {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 3px solid var(--border2); border-top-color: var(--accent);
+  animation: rot 0.9s linear infinite;
+}
+@keyframes rot { to { transform: rotate(360deg); } }
+#boot-msg { color: var(--text-dim); font-size: 13px; text-align: center; line-height: 1.6; max-width: 460px; padding: 0 20px; }
+#boot-msg .dim { color: #5a6274; font-size: 11.5px; font-family: var(--mono); }
+
+/* toasts */
+#toast-root {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 74px; z-index: 30;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
+}
+.toast {
+  background: #10131aee; border: 1px solid var(--border2); color: var(--text);
+  border-radius: 7px; padding: 7px 14px; font-size: 12px;
+  animation: toast-in .18s ease-out; max-width: 480px;
+}
+.toast.warn { border-color: #7a5a2a; color: #ffd9a0; }
+.toast.err { border-color: #7a3a3a; color: #ffdadf; }
+.toast.fade { opacity: 0; transition: opacity .4s; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
+
+/* modal */
+#modal-root { position: fixed; inset: 0; z-index: 100; display: none; }
+#modal-root.show { display: block; }
+#modal-veil { position: absolute; inset: 0; background: #0a0c10aa; backdrop-filter: blur(3px); }
+#modal-card {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(720px, calc(100vw - 40px)); max-height: calc(100vh - 60px);
+  background: var(--panel); border: 1px solid var(--border2); border-radius: 12px;
+  display: flex; flex-direction: column; box-shadow: 0 18px 60px #000000c0;
+}
+#modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 13px 18px; border-bottom: 1px solid var(--border);
+  color: var(--head); font-size: 14px; font-weight: 650;
+}
+#modal-body { padding: 14px 18px 18px; overflow-y: auto; line-height: 1.6; font-size: 12.5px; }
+#modal-body h3 { color: var(--accent); font-size: 12px; letter-spacing: .8px; text-transform: uppercase; margin: 16px 0 6px; }
+#modal-body h3:first-child { margin-top: 0; }
+#modal-body code { font-family: var(--mono); font-size: 11.5px; background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; color: #bfe2ff; }
+#modal-body pre {
+  font-family: var(--mono); font-size: 11px; line-height: 1.55; color: #c4d6ee;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 7px;
+  padding: 10px 12px; overflow-x: auto; margin: 6px 0;
+}
+#modal-body table { border-collapse: collapse; width: 100%; margin: 6px 0; font-size: 11.5px; }
+#modal-body th, #modal-body td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; }
+#modal-body th { color: var(--text-dim); font-weight: 600; background: var(--bg2); }
+#modal-body td code { background: transparent; border: none; padding: 0; color: #bfe2ff; }
+#modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div id="brand">
+      <h1>CamTrack <span class="accent">Editor</span></h1>
+      <div class="sub">fixed camera-track recorder &middot; writes <b>camdat.json</b></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">File</div>
+      <div id="file-actions">
+        <button class="btn" id="btn-load-gltf">Load glTF&hellip;</button>
+        <button class="btn" id="btn-import">Import camdat&hellip;</button>
+        <button class="btn" id="btn-new">New</button>
+        <button class="btn primary" id="btn-export">Export camdat.json</button>
+      </div>
+      <div id="save-row"><span id="save-dot"></span><span id="save-text">unsaved</span>
+        <button class="btn tiny ghost" id="btn-preview-json" style="margin-left:auto">view JSON</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Models <span id="models-count" style="letter-spacing:0"></span></div>
+      <div id="models-list"></div>
+      <div class="hint" id="models-hint">Load a .glb / .gltf room to begin. Every loaded glTF is added to camdat.json together with its camera tracks.</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Camera tracks</div>
+      <div id="track-add">
+        <button class="btn" id="btn-add-line" title="Straight-line move">+ Line</button>
+        <button class="btn" id="btn-add-circle" title="Circle / oval orbit">+ Circle</button>
+        <button class="btn" id="btn-add-fixed" title="Fixed position, rotating view">+ Fixed</button>
+      </div>
+      <div id="track-list"></div>
+      <div class="hint" id="tracks-hint">Straight lines, circles/ovals, or fixed + rotating cameras. Drag the handles in the viewport (Shift-drag = height); numbers below.</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Track options</div>
+      <div id="props-empty">Select or create a track to edit its speed, rotation boundaries, look target, FOV and loop behaviour.</div>
+      <div id="props-body" style="display:none"></div>
+    </div>
+  </aside>
+
+  <main id="viewport">
+    <canvas id="gl"></canvas>
+    <div id="model-note">no model loaded</div>
+    <div id="vp-toolbar">
+      <button class="vp-btn on" id="btn-grid" title="Toggle grid (G)">GRID</button>
+      <button class="vp-btn on" id="btn-paths" title="Toggle path overlays (P)">PATHS</button>
+      <button class="vp-btn on" id="btn-pip" title="Toggle track-cam preview (C)">TRACK CAM</button>
+      <button class="vp-btn on" id="btn-smooth" title="Toggle smooth camera turns (S)">SMOOTH</button>
+      <button class="vp-btn" id="btn-help" title="Help (H)">HELP</button>
+    </div>
+    <div id="pip-box"><div id="pip-label">TRACK CAM</div></div>
+    <div id="playbar">
+      <button class="btn primary" id="btn-play">Play</button>
+      <button class="btn" id="btn-playall">Play all</button>
+      <span id="pb-name"></span>
+      <input type="range" id="scrub" min="0" max="1000" value="0">
+      <span id="pb-time"><b>0.0</b> / 0.0 s</span>
+      <select class="sel" id="rate">
+        <option value="0.25">0.25x</option>
+        <option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option>
+        <option value="2">2x</option>
+      </select>
+      <span class="pb-lab" title="max camera turn rate while SMOOTH is on">turn °/s</span>
+      <input type="number" id="turn-rate" min="10" max="720" step="10" value="160">
+    </div>
+    <div id="toast-root"></div>
+    <div id="boot"><div class="spin"></div><div id="boot-msg">loading three.js from cdn&hellip;</div></div>
+  </main>
+</div>
+
+<div id="drag-hint"></div>
+
+<div id="modal-root">
+  <div id="modal-veil"></div>
+  <div id="modal-card">
+    <div id="modal-head"><span id="modal-title"></span><button class="btn tiny" id="modal-close">Close</button></div>
+    <div id="modal-body"></div>
+    <div id="modal-foot"></div>
+  </div>
+</div>
+
+<input type="file" id="file-gltf" multiple accept=".glb,.gltf,.bin,.png,.jpg,.jpeg,.webp,.bmp" style="display:none">
+<input type="file" id="file-json" accept=".json,application/json" style="display:none">
+
+<script type="module">
+/* ============================================================================
+   CamTrack Editor — records fixed camera tracks (straight lines, circles /
+   ovals, fixed + rotating) for glTF rooms and writes them as camdat.json.
+   Standalone authoring tool for the es-fca glTF room-viewer project.
+   ========================================================================== */
+const APP_VERSION = '1.0.0';
+const LS_KEY = 'camtrack.autosave.v1';
+const PALETTE = ['#4fc3f7', '#ffb74d', '#81c784', '#f06292', '#9575cd', '#4db6ac', '#ffd54f', '#e57373', '#7986cb', '#a1887f'];
+
+const DOC_STRING =
+  'Parametric constant-speed camera tracks. line: pos(t)=start+s(t)*(end-start). ' +
+  'circle: theta deg, pos(t)=center+[radiusX*cos(theta),0,radiusZ*sin(theta)], y=center[1]. ' +
+  'fixed: pos=position, yaw/pitch advance by *SpeedDegS with optional *MinDeg/*MaxDeg boundaries. ' +
+  'loopMode: loop wraps, pingPong mirrors at ends, once stops at end. ' +
+  'Orientation: lookAt point when lookMode is center|point|path, else fixed yaw/pitch (YXZ Euler, +Y up, pitch positive = up). ' +
+  'Units: meters / degrees / seconds. Coordinates are the glTF file own world space (identity transform). ' +
+  'durationSec is informational (one playback cycle).';
+
+/* ------------------------------------------------------------------ utils */
+const $ = s => document.querySelector(s);
+const DEG = Math.PI / 180;
+const r4 = v => Math.round((+v) * 10000) / 10000;
+const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const dist3 = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+const lerp3 = (a, b, s) => [a[0] + (b[0] - a[0]) * s, a[1] + (b[1] - a[1]) * s, a[2] + (b[2] - a[2]) * s];
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+function normSafe(d) { const L = Math.hypot(d[0], d[1], d[2]); return L > 1e-9 ? [d[0] / L, d[1] / L, d[2] / L] : [0, 0, -1]; }
+function h(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+
+/* ------------------------------------------------------------------ toast */
+function toast(msg, kind) {
+  const t = h('div', 'toast' + (kind ? ' ' + kind : ''), esc(msg));
+  $('#toast-root').appendChild(t);
+  setTimeout(() => { t.classList.add('fade'); setTimeout(() => t.remove(), 450); }, 3400);
+}
+
+/* ------------------------------------------------------------------ modal */
+let modalOnClose = null;
+function showModal(opts) {
+  $('#modal-title').textContent = opts.title || '';
+  $('#modal-body').innerHTML = opts.html || '';
+  const foot = $('#modal-foot');
+  foot.innerHTML = '';
+  (opts.buttons || []).forEach(b => {
+    const btn = h('button', 'btn' + (b.cls ? ' ' + b.cls : ''), esc(b.label));
+    btn.addEventListener('click', () => { closeModal(); if (b.onClick) b.onClick(); });
+    foot.appendChild(btn);
+  });
+  modalOnClose = opts.onClose || null;
+  $('#modal-root').classList.add('show');
+}
+function closeModal() {
+  if (!$('#modal-root').classList.contains('show')) return;
+  $('#modal-root').classList.remove('show');
+  if (modalOnClose) { const f = modalOnClose; modalOnClose = null; f(); }
+}
+$('#modal-close').addEventListener('click', closeModal);
+$('#modal-veil').addEventListener('click', closeModal);
+function confirmDialog(msg, yesLabel) {
+  return new Promise(res => {
+    showModal({
+      title: 'Confirm',
+      html: '<p style="margin:4px 0">' + esc(msg) + '</p>',
+      buttons: [
+        { label: 'Cancel', onClick: () => res(false) },
+        { label: yesLabel || 'Continue', cls: 'primary', onClick: () => res(true) }
+      ],
+      onClose: () => res(false)
+    });
+  });
+}
+
+/* ================================================================== state */
+const state = {
+  doc: null,            // camdat document (models[] with tracks[])
+  activeFile: null,     // filename of the active model entry
+  selection: null,      // selected track id
+  playing: false,
+  playAll: false, playlist: [], plIndex: 0,
+  t: 0,                 // seconds inside current cycle
+  rate: 1,
+  showGrid: true, showPaths: true, showPip: true,
+  dirty: false, exported: true
+};
+
+function blankDoc() {
+  return {
+    format: 'camdat', version: 1,
+    generatedBy: 'CamTrack Editor ' + APP_VERSION,
+    units: { length: 'meters', angle: 'degrees', time: 'seconds', up: '+Y', handedness: 'right-handed (glTF)' },
+    doc: DOC_STRING,
+    models: []
+  };
+}
+function activeModel() { return state.doc.models.find(m => m.file === state.activeFile) || null; }
+function activeTracks() { const m = activeModel(); return m ? m.tracks : []; }
+function selTrack() { return activeTracks().find(t => t.id === state.selection) || null; }
+function modelColor(track) {
+  const i = activeTracks().indexOf(track);
+  return PALETTE[(i < 0 ? 0 : i) % PALETTE.length];
+}
+
+let idCounter = 0;
+function newId() { return 't' + Date.now().toString(36) + (++idCounter).toString(36) + Math.random().toString(36).slice(2, 6); }
+
+function nextName(base) {
+  const names = activeTracks().map(t => t.name);
+  let n = 1;
+  while (names.includes(base + ' ' + n)) n++;
+  return base + ' ' + n;
+}
+
+/* model info used for new-track defaults (bbox center/size) */
+function activeModelInfo() {
+  const loaded = three.loaded.get(state.activeFile);
+  if (loaded) {
+    const c = [], s = [];
+    for (let i = 0; i < 3; i++) { c[i] = (loaded.box.min[i] + loaded.box.max[i]) / 2; s[i] = Math.max(loaded.box.max[i] - loaded.box.min[i], 0.1); }
+    return { center: c, size: s, diag: loaded.diag };
+  }
+  const m = activeModel();
+  if (m && m.bounds && m.bounds.min && m.bounds.max) {
+    const c = [], s = [];
+    for (let i = 0; i < 3; i++) { c[i] = (m.bounds.min[i] + m.bounds.max[i]) / 2; s[i] = Math.max(m.bounds.max[i] - m.bounds.min[i], 0.1); }
+    return { center: c, size: s, diag: Math.hypot(s[0], s[1], s[2]) };
+  }
+  return { center: [0, 1, 0], size: [8, 2, 6], diag: 10 };
+}
+
+/* ------------------------------------------------------- track factories */
+function makeTrack(type) {
+  const mi = activeModelInfo();
+  const c = mi.center, s = mi.size, y = r4(c[1]);
+  const t = { id: newId(), type, enabled: true, fovDeg: 60 };
+  if (type === 'line') {
+    const dx = Math.max(s[0] * 0.3, 0.5);
+    t.start = [r4(c[0] - dx), y, r4(c[2])];
+    t.end = [r4(c[0] + dx), y, r4(c[2])];
+    t.speedMS = r4(Math.max(dist3(t.start, t.end) / 12, 0.05));
+    t.loopMode = 'pingPong';
+    t.lookMode = 'path';
+    t.lookAt = [r4(c[0]), y, r4(c[2])];
+    t.yawDeg = 0; t.pitchDeg = 0;
+    t.name = nextName('Line');
+  } else if (type === 'circle') {
+    const r = r4(Math.max(Math.min(s[0], s[2]) * 0.35, 0.2));
+    t.center = [r4(c[0]), y, r4(c[2])];
+    t.radiusX = r; t.radiusZ = r;
+    t.startAngleDeg = 0;
+    t.direction = 'cw';
+    t.speedDegS = 6;
+    t.arcBounds = false; t.arcMinDeg = -90; t.arcMaxDeg = 90;
+    t.loopMode = 'loop';
+    t.lookMode = 'center';
+    t.lookAt = t.center.slice();
+    t.yawDeg = 0; t.pitchDeg = 0;
+    t.name = nextName('Circle');
+  } else {
+    t.position = [r4(c[0] + Math.max(s[0] * 0.25, 0.4)), y, r4(c[2])];
+    const d = [c[0] - t.position[0], 0, c[2] - t.position[2]];
+    t.yawDeg = r4(Math.atan2(-d[0], -d[2]) / DEG);
+    t.pitchDeg = 0;
+    t.yawSpeedDegS = 3; t.pitchSpeedDegS = 0;
+    t.yawBounds = false; t.yawMinDeg = -45; t.yawMaxDeg = 45;
+    t.pitchBounds = false; t.pitchMinDeg = -10; t.pitchMaxDeg = 10;
+    t.loopMode = 'pingPong';
+    t.name = nextName('Fixed');
+  }
+  return t;
+}
+
+/* ====================================================== playback math ===
+   Pure functions, no three.js dependency. This is the reference
+   implementation of the camdat format (mirrored in the Help modal so any
+   consumer program can reproduce tracks exactly).                        */
+function tri01(u) { u = ((u % 2) + 2) % 2; return u < 1 ? u : 2 - u; }
+function phase01(t, T, mode) {
+  if (!(T > 0)) return 0;
+  const u = t / T;
+  if (mode === 'loop') return ((u % 1) + 1) % 1;
+  if (mode === 'once') return Math.min(u, 1);
+  return tri01(u);
+}
+function angleAt(t, a0, w, dir, min, max, mode) {
+  const v = a0 + dir * w * t;
+  if (!(max > min)) return v;                       // free rotation
+  const a = clamp(a0, min, max);
+  const x = (a + dir * w * t) - min, span = max - min;
+  if (mode === 'loop') return min + ((x % span) + span) % span;
+  if (mode === 'once') return clamp(a + dir * w * t, min, max);
+  const k = Math.floor(x / span), r = x - k * span;
+  return ((k % 2) + 2) % 2 === 0 ? min + r : max - r;
+}
+
+function evalTrack(tr, time) {
+  let pos, lookAt = null, yaw = null, pitch = null;
+  if (tr.type === 'line') {
+    const L = dist3(tr.start, tr.end);
+    const T = L / Math.max(tr.speedMS, 1e-6);
+    const s = phase01(time, T, tr.loopMode);
+    pos = lerp3(tr.start, tr.end, s);
+    if (tr.lookMode === 'path') {
+      const u = T > 0 ? time / T : 0;
+      const returning = tr.loopMode === 'pingPong' && (((u % 2) + 2) % 2) >= 1;
+      pos = lerp3(tr.start, tr.end, s);
+      lookAt = add3(pos, normSafe(returning ? sub3(tr.start, tr.end) : sub3(tr.end, tr.start)));
+    } else if (tr.lookMode === 'point') lookAt = tr.lookAt.slice();
+    else { yaw = tr.yawDeg; pitch = tr.pitchDeg; }
+  } else if (tr.type === 'circle') {
+    const dir = tr.direction === 'ccw' ? -1 : 1;
+    const bounded = tr.arcBounds && tr.arcMaxDeg > tr.arcMinDeg;
+    const th = angleAt(time, tr.startAngleDeg, Math.abs(tr.speedDegS) || 0, dir,
+      bounded ? tr.arcMinDeg : null, bounded ? tr.arcMaxDeg : null, tr.loopMode);
+    const rad = th * DEG;
+    pos = [tr.center[0] + tr.radiusX * Math.cos(rad), tr.center[1], tr.center[2] + tr.radiusZ * Math.sin(rad)];
+    if (tr.lookMode === 'center') lookAt = tr.center.slice();
+    else if (tr.lookMode === 'point') lookAt = tr.lookAt.slice();
+    else if (tr.lookMode === 'path') {
+      const tx = -tr.radiusX * Math.sin(rad), tz = tr.radiusZ * Math.cos(rad);
+      const L = Math.hypot(tx, tz) || 1;
+      lookAt = add3(pos, [dir * tx / L, 0, dir * tz / L]);
+    } else { yaw = tr.yawDeg; pitch = tr.pitchDeg; }
+  } else {
+    pos = tr.position.slice();
+    const yb = tr.yawBounds && tr.yawMaxDeg > tr.yawMinDeg;
+    const pb = tr.pitchBounds && tr.pitchMaxDeg > tr.pitchMinDeg;
+    yaw = angleAt(time, tr.yawDeg, Math.abs(tr.yawSpeedDegS) || 0, Math.sign(tr.yawSpeedDegS || 1),
+      yb ? tr.yawMinDeg : null, yb ? tr.yawMaxDeg : null, tr.loopMode);
+    pitch = angleAt(time, tr.pitchDeg, Math.abs(tr.pitchSpeedDegS) || 0, Math.sign(tr.pitchSpeedDegS || 1),
+      pb ? tr.pitchMinDeg : null, pb ? tr.pitchMaxDeg : null, tr.loopMode);
+  }
+  return { pos, lookAt, yaw, pitch, fovDeg: tr.fovDeg };
+}
+
+function cycleDuration(tr) {
+  if (tr.type === 'line') {
+    const T = dist3(tr.start, tr.end) / Math.max(tr.speedMS, 1e-6);
+    return tr.loopMode === 'pingPong' ? T * 2 : T;
+  }
+  if (tr.type === 'circle') {
+    const w = Math.abs(tr.speedDegS) || 1e-6;
+    const bounded = tr.arcBounds && tr.arcMaxDeg > tr.arcMinDeg;
+    if (bounded) {
+      const span = tr.arcMaxDeg - tr.arcMinDeg;
+      return tr.loopMode === 'pingPong' ? 2 * span / w : span / w;
+    }
+    return tr.loopMode === 'once' ? Infinity : 360 / w;
+  }
+  let T = 0;
+  for (const ax of ['yaw', 'pitch']) {
+    const sp = Math.abs(tr[ax + 'SpeedDegS'] || 0);
+    if (sp <= 0) continue;
+    const bnd = tr[ax + 'Bounds'] && tr[ax + 'MaxDeg'] > tr[ax + 'MinDeg'];
+    const span = bnd ? (tr[ax + 'MaxDeg'] - tr[ax + 'MinDeg']) : 360;
+    const per = tr.loopMode === 'pingPong' ? 2 * span / sp : span / sp;
+    if (per > T) T = per;
+  }
+  return T;
+}
+function durText(T) { return !isFinite(T) ? 'inf' : (T <= 0 ? 'static' : T.toFixed(1) + ' s'); }
+
+/* ============================================== serialization / sanitize */
+function v3j(a) { return [r4(a[0]), r4(a[1]), r4(a[2])]; }
+function trackToJSON(tr) {
+  const o = { id: tr.id, name: tr.name || '', type: tr.type, enabled: tr.enabled !== false, fovDeg: r4(tr.fovDeg), loopMode: tr.loopMode };
+  if (tr.type === 'line') {
+    o.start = v3j(tr.start); o.end = v3j(tr.end); o.speedMS = r4(tr.speedMS);
+    o.lookMode = tr.lookMode;
+    if (tr.lookMode === 'point') o.lookAt = v3j(tr.lookAt);
+    if (tr.lookMode === 'fixed') { o.yawDeg = r4(tr.yawDeg); o.pitchDeg = r4(tr.pitchDeg); }
+  } else if (tr.type === 'circle') {
+    o.center = v3j(tr.center); o.radiusX = r4(tr.radiusX); o.radiusZ = r4(tr.radiusZ);
+    o.startAngleDeg = r4(tr.startAngleDeg); o.direction = tr.direction; o.speedDegS = r4(tr.speedDegS);
+    if (tr.arcBounds && tr.arcMaxDeg > tr.arcMinDeg) { o.arcMinDeg = r4(tr.arcMinDeg); o.arcMaxDeg = r4(tr.arcMaxDeg); }
+    o.lookMode = tr.lookMode;
+    if (tr.lookMode === 'point') o.lookAt = v3j(tr.lookAt);
+    if (tr.lookMode === 'fixed') { o.yawDeg = r4(tr.yawDeg); o.pitchDeg = r4(tr.pitchDeg); }
+  } else {
+    o.position = v3j(tr.position);
+    o.yawDeg = r4(tr.yawDeg); o.pitchDeg = r4(tr.pitchDeg);
+    o.yawSpeedDegS = r4(tr.yawSpeedDegS); o.pitchSpeedDegS = r4(tr.pitchSpeedDegS);
+    if (tr.yawBounds && tr.yawMaxDeg > tr.yawMinDeg) { o.yawMinDeg = r4(tr.yawMinDeg); o.yawMaxDeg = r4(tr.yawMaxDeg); }
+    if (tr.pitchBounds && tr.pitchMaxDeg > tr.pitchMinDeg) { o.pitchMinDeg = r4(tr.pitchMinDeg); o.pitchMaxDeg = r4(tr.pitchMaxDeg); }
+  }
+  const T = cycleDuration(tr);
+  if (isFinite(T)) o.durationSec = r4(T);
+  return o;
+}
+function docToJSON() {
+  return {
+    format: 'camdat', version: 1,
+    generatedBy: 'CamTrack Editor ' + APP_VERSION,
+    units: blankDoc().units,
+    doc: DOC_STRING,
+    models: state.doc.models.map(m => ({
+      file: m.file,
+      addedAt: m.addedAt || null,
+      bounds: m.bounds || null,
+      tracks: m.tracks.map(trackToJSON)
+    }))
+  };
+}
+
+function num(v, def) { const n = +v; return isFinite(n) ? n : def; }
+function vec3(v, def) {
+  if (Array.isArray(v) && v.length >= 3 && v.slice(0, 3).every(x => isFinite(+x))) return [+v[0], +v[1], +v[2]];
+  return def;
+}
+function pick(v, list, def) { return list.includes(v) ? v : def; }
+function sanitizeTrack(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const type = pick(raw.type, ['line', 'circle', 'fixed'], null);
+  if (!type) return null;
+  const tr = { id: typeof raw.id === 'string' && raw.id ? raw.id : newId(), type };
+  tr.name = typeof raw.name === 'string' ? raw.name.slice(0, 60) : '';
+  tr.enabled = raw.enabled !== false;
+  tr.fovDeg = clamp(num(raw.fovDeg, 60), 5, 140);
+  tr.loopMode = pick(raw.loopMode, ['loop', 'pingPong', 'once'], type === 'line' ? 'pingPong' : 'loop');
+  if (type === 'line') {
+    tr.start = vec3(raw.start, [0, 1, 0]);
+    tr.end = vec3(raw.end, [1, 1, 0]);
+    tr.speedMS = Math.max(num(raw.speedMS, 1), 0.001);
+    tr.lookMode = pick(raw.lookMode, ['path', 'point', 'fixed'], 'path');
+    tr.lookAt = vec3(raw.lookAt, [0, 1, 0]);
+    tr.yawDeg = num(raw.yawDeg, 0); tr.pitchDeg = num(raw.pitchDeg, 0);
+  } else if (type === 'circle') {
+    tr.center = vec3(raw.center, [0, 1, 0]);
+    tr.radiusX = Math.max(num(raw.radiusX, 1), 0.01);
+    tr.radiusZ = Math.max(num(raw.radiusZ, tr.radiusX), 0.01);
+    tr.startAngleDeg = num(raw.startAngleDeg, 0);
+    tr.direction = pick(raw.direction, ['cw', 'ccw'], 'cw');
+    tr.speedDegS = Math.max(num(raw.speedDegS, 6), 0.001);
+    tr.arcBounds = raw.arcMinDeg != null && raw.arcMaxDeg != null && num(raw.arcMaxDeg, 1) > num(raw.arcMinDeg, 0);
+    tr.arcMinDeg = num(raw.arcMinDeg, -90); tr.arcMaxDeg = num(raw.arcMaxDeg, 90);
+    tr.lookMode = pick(raw.lookMode, ['center', 'point', 'path', 'fixed'], 'center');
+    tr.lookAt = vec3(raw.lookAt, tr.center.slice());
+    tr.yawDeg = num(raw.yawDeg, 0); tr.pitchDeg = num(raw.pitchDeg, 0);
+  } else {
+    tr.position = vec3(raw.position, [0, 1, 0]);
+    tr.yawDeg = num(raw.yawDeg, 0); tr.pitchDeg = num(raw.pitchDeg, 0);
+    tr.yawSpeedDegS = num(raw.yawSpeedDegS, 0);
+    tr.pitchSpeedDegS = num(raw.pitchSpeedDegS, 0);
+    tr.yawBounds = raw.yawMinDeg != null && raw.yawMaxDeg != null && num(raw.yawMaxDeg, 1) > num(raw.yawMinDeg, 0);
+    tr.yawMinDeg = num(raw.yawMinDeg, -45); tr.yawMaxDeg = num(raw.yawMaxDeg, 45);
+    tr.pitchBounds = raw.pitchMinDeg != null && raw.pitchMaxDeg != null && num(raw.pitchMaxDeg, 1) > num(raw.pitchMinDeg, 0);
+    tr.pitchMinDeg = num(raw.pitchMinDeg, -10); tr.pitchMaxDeg = num(raw.pitchMaxDeg, 10);
+  }
+  return tr;
+}
+function sanitizeDoc(raw) {
+  const doc = blankDoc();
+  let dropped = 0, tracks = 0;
+  if (raw && typeof raw === 'object' && Array.isArray(raw.models)) {
+    for (const m of raw.models) {
+      if (!m || typeof m.file !== 'string' || !m.file) continue;
+      const entry = { file: m.file, addedAt: typeof m.addedAt === 'string' ? m.addedAt : new Date().toISOString(), bounds: null, tracks: [] };
+      if (m.bounds && Array.isArray(m.bounds.min) && Array.isArray(m.bounds.max)) {
+        entry.bounds = { min: vec3(m.bounds.min, [0, 0, 0]), max: vec3(m.bounds.max, [0, 0, 0]) };
+      }
+      if (Array.isArray(m.tracks)) {
+        for (const rt of m.tracks) {
+          const t = sanitizeTrack(rt);
+          if (t) { entry.tracks.push(t); tracks++; } else dropped++;
+        }
+      }
+      doc.models.push(entry);
+    }
+  }
+  return { doc, dropped, tracks };
+}
+
+/* ----------------------------------------------------- autosave & dirty */
+let autosaveTimer = null;
+function markDirty() {
+  state.dirty = true; state.exported = false;
+  $('#save-dot').classList.add('dirty');
+  $('#save-text').textContent = 'modified — autosaved locally';
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(doAutosave, 500);
+}
+function doAutosave() {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({ doc: docToJSON(), activeFile: state.activeFile, selection: state.selection }));
+  } catch (e) { /* storage full / blocked — ignore */ }
+}
+function markExported() {
+  state.dirty = false; state.exported = true;
+  $('#save-dot').classList.remove('dirty');
+  $('#save-text').textContent = 'exported';
+}
+function restoreAutosave() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return false;
+    const saved = JSON.parse(raw);
+    const res = sanitizeDoc(saved.doc);
+    if (!res.doc.models.length) return false;
+    state.doc = res.doc;
+    state.activeFile = saved.activeFile && res.doc.models.some(m => m.file === saved.activeFile)
+      ? saved.activeFile : res.doc.models[0].file;
+    state.selection = null;
+    return res.doc.models.length;
+  } catch (e) { return false; }
+}
+
+/* ------------------------------------------------------ import / export */
+async function importCamdat(file) {
+  let parsed;
+  try { parsed = JSON.parse(await file.text()); }
+  catch (e) { toast('Not valid JSON: ' + e.message, 'err'); return; }
+  const res = sanitizeDoc(parsed);
+  if (!res.doc.models.length) { toast('No models with camera data found in that file', 'warn'); return; }
+  if (state.dirty && !state.exported) {
+    const ok = await confirmDialog('Importing replaces the current camera data. Discard your unsaved changes?');
+    if (!ok) return;
+  }
+  state.doc = res.doc;
+  state.selection = null;
+  state.playing = false; state.playAll = false;
+  const loadedNames = [...three.loaded.keys()];
+  state.activeFile = loadedNames.find(n => res.doc.models.some(m => m.file === n)) || res.doc.models[0].file;
+  rebuildAll();
+  markDirty();
+  toast('Imported camdat.json — ' + res.doc.models.length + ' model(s), ' + res.tracks + ' track(s)'
+    + (res.dropped ? ' (' + res.dropped + ' invalid track(s) skipped)' : ''));
+}
+function exportCamdat() {
+  const json = JSON.stringify(docToJSON(), null, 2);
+  const blob = new Blob([json + '\n'], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'camdat.json';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  markExported();
+  doAutosave();
+  const n = state.doc.models.reduce((a, m) => a + m.tracks.length, 0);
+  toast('Exported camdat.json (' + state.doc.models.length + ' model(s), ' + n + ' track(s))');
+}
+async function newDoc() {
+  if (state.dirty && !state.exported) {
+    const ok = await confirmDialog('Start a new empty camdat document? Unsaved changes are discarded.');
+    if (!ok) return;
+  }
+  state.doc = blankDoc();
+  state.activeFile = null;
+  state.selection = null;
+  state.playing = false; state.playAll = false;
+  state.exported = true; state.dirty = false;
+  $('#save-dot').classList.remove('dirty');
+  $('#save-text').textContent = 'new document';
+  rebuildAll();
+  doAutosave();
+  toast('New camdat document');
+}
+
+/* ================================================================== three */
+const THREE_CDN = 'https://cdn.jsdelivr.net/npm/three@0.170.0';
+const three = { loaded: new Map() };   // filename -> { scene, box:{min,max}, diag }
+let THREE, renderer, scene, orbitCam, pipCam, controls, clock;
+let gridGroup = null, gizmoRoot = null, trackRoot = null, camBody = null;
+let sphereGeo = null, raycaster = null;
+let OrbitControlsC = null, GLTFLoaderC = null, DRACOLoaderC = null, KTX2LoaderC = null;
+const visuals = new Map();             // trackId -> { group, paths, handles, ghost }
+
+async function initThree() {
+  THREE = await import('three');
+  ({ OrbitControls: OrbitControlsC } = await import('three/addons/controls/OrbitControls.js'));
+  ({ GLTFLoader: GLTFLoaderC } = await import('three/addons/loaders/GLTFLoader.js'));
+  try { ({ DRACOLoader: DRACOLoaderC } = await import('three/addons/loaders/DRACOLoader.js')); } catch (e) { }
+  try { ({ KTX2Loader: KTX2LoaderC } = await import('three/addons/loaders/KTX2Loader.js')); } catch (e) { }
+
+  const canvas = $('#gl');
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x14161c);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+  scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x3a3226, 1.1));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+  sun.position.set(0.6, 1.0, 0.4);
+  scene.add(sun);
+
+  try {
+    const { RoomEnvironment } = await import('three/addons/environments/RoomEnvironment.js');
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  } catch (e) { }
+
+  orbitCam = new THREE.PerspectiveCamera(55, 1, 0.05, 100);
+  orbitCam.position.set(6, 4, 8);
+  pipCam = new THREE.PerspectiveCamera(60, 16 / 9, 0.05, 100);
+
+  trackRoot = new THREE.Group();
+  gizmoRoot = new THREE.Group();
+  scene.add(trackRoot, gizmoRoot);
+  sphereGeo = new THREE.SphereGeometry(1, 18, 12);
+  raycaster = new THREE.Raycaster();
+
+  buildCamBody();
+  rebuildGrid();
+
+  /* our pointer handlers must be registered BEFORE OrbitControls so a
+     handle-grab can disable orbiting for that gesture */
+  canvas.addEventListener('pointerdown', onCanvasDown);
+  controls = new OrbitControlsC(orbitCam, canvas);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.09;
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+
+  clock = new THREE.Clock();
+  const vp = $('#viewport');
+  const onResize = () => {
+    const w = vp.clientWidth, h = vp.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    orbitCam.aspect = w / h;
+    orbitCam.updateProjectionMatrix();
+  };
+  new ResizeObserver(onResize).observe(vp);
+  onResize();
+}
+
+/* -------------------------------------------------------------- camera body
+   small gizmo showing where the track camera is / what it sees */
+function buildCamBody() {
+  const mat = new THREE.MeshBasicMaterial({ color: 0x53b9ff, depthTest: false, transparent: true, opacity: 0.95 });
+  const beamMat = new THREE.LineBasicMaterial({ color: 0xffb454, depthTest: false, transparent: true, opacity: 0.9 });
+  const tipMat = new THREE.MeshBasicMaterial({ color: 0xffb454, depthTest: false, transparent: true, opacity: 0.95 });
+  camBody = new THREE.Group();
+  const box = new THREE.Mesh(new THREE.BoxGeometry(1, 0.72, 1.35), mat);
+  /* direction pointer: thin static line + small tip dot ("laser pointer").
+     Replaces the old cone, which sat directly in front of the track camera
+     and blocked the TRACK CAM preview. Local units — camBody is scaled per
+     model, so the beam scales with the room. */
+  const beam = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, -0.68),   // just in front of the body box
+      new THREE.Vector3(0, 0, -4.5)     // tip
+    ]), beamMat);
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), tipMat);
+  tip.position.set(0, 0, -4.5);
+  camBody.add(box, beam, tip);
+  camBody.renderOrder = 12;
+  camBody.traverse(o => { o.renderOrder = 12; });
+  camBody.visible = false;
+  scene.add(camBody);
+}
+/* Exact orientation the track defines for ev (smoother target). */
+function evTargetQuat(ev) {
+  const q = new THREE.Quaternion();
+  if (ev.lookAt) {
+    const m = new THREE.Matrix4().lookAt(
+      new THREE.Vector3(ev.pos[0], ev.pos[1], ev.pos[2]),
+      new THREE.Vector3(ev.lookAt[0], ev.lookAt[1], ev.lookAt[2]),
+      new THREE.Vector3(0, 1, 0));
+    q.setFromRotationMatrix(m);
+  } else {
+    q.setFromEuler(new THREE.Euler(ev.pitch * DEG, ev.yaw * DEG, 0, 'YXZ'));
+  }
+  return q;
+}
+
+/* Smooth-turn filter (preview only — camdat.json stays exact/parametric).
+   While playing, the camera orientation approaches the track's exact
+   orientation along the shortest arc at a bounded angular rate, so
+   direction reversals (e.g. pingPong lookMode 'path' turnarounds) read as
+   turns instead of snaps. It snaps to the exact orientation when:
+     - smoothing is disabled, or dt <= 0 (paused / scrub / edits), or
+     - the track changed, or the position jumped (seek, loop wrap, switch)
+   Position always follows the track exactly. */
+const turn = { enabled: true, rateDegS: 160, quat: null, trackId: null, prevPos: null };
+function turnQuat() { if (!turn.quat) turn.quat = new THREE.Quaternion(); return turn.quat; }
+/* the actual rate limiter: rotate q toward target at <= rateDegS (deg/s). Pure w.r.t. its inputs. */
+function turnStepLimited(q, target, dt) {
+  const ang = q.angleTo(target);
+  const maxStep = Math.max(turn.rateDegS, 0) * DEG * Math.max(dt, 0);
+  if (ang > maxStep && ang > 1e-7) q.slerp(target, Math.min(maxStep / ang, 1));
+  else q.copy(target);
+  return q;
+}
+function updateTrackCam(tr, dt) {
+  if (!tr) { camBody.visible = false; turn.trackId = null; turn.prevPos = null; return; }
+  const ev = evalTrack(tr, state.t);
+  const target = evTargetQuat(ev);
+  const q = turnQuat();
+  const jumped = turn.trackId !== tr.id || !turn.prevPos ||
+    dist3(turn.prevPos, ev.pos) > Math.max(activeModelInfo().diag * 0.5, 0.5);
+  if (!turn.enabled || dt <= 0 || jumped) {
+    q.copy(target);
+  } else {
+    turnStepLimited(q, target, dt);
+  }
+  turn.trackId = tr.id;
+  turn.prevPos = ev.pos.slice();
+  camBody.visible = true;
+  camBody.position.set(ev.pos[0], ev.pos[1], ev.pos[2]);
+  const s = Math.max(activeModelInfo().diag * 0.016, 0.02);
+  camBody.scale.setScalar(s);
+  camBody.quaternion.copy(q);
+}
+
+/* ---------------------------------------------------------------- grid */
+function rebuildGrid() {
+  if (gridGroup) { scene.remove(gridGroup); gridGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+  const loaded = three.loaded.get(state.activeFile);
+  let size = 20, y = 0, ax = 1;
+  if (loaded) {
+    const d = loaded.diag;
+    size = Math.ceil(d * 1.7);
+    y = loaded.box.min[1] - d * 0.0015;
+    ax = Math.max(d * 0.06, 0.05);
+  }
+  gridGroup = new THREE.Group();
+  const g = new THREE.GridHelper(size, 24, 0x39415a, 0x232a38);
+  g.material.transparent = true; g.material.opacity = 0.55;
+  g.position.y = y;
+  const axes = new THREE.AxesHelper(ax);
+  axes.position.y = y + 0.001;
+  gridGroup.add(g, axes);
+  gridGroup.visible = state.showGrid;
+  scene.add(gridGroup);
+}
+
+/* --------------------------------------------------------- model loading */
+async function loadModelFiles(files) {
+  const arr = [...files];
+  const glb = arr.find(f => /\.glb$/i.test(f.name));
+  const gltfF = arr.find(f => /\.gltf$/i.test(f.name));
+  if (!glb && !gltfF) { toast('Pick a .glb or .gltf file (plus its .bin / textures if they are separate files)', 'warn'); return; }
+  const main = glb || gltfF;
+  const name = main.name;
+  if (three.loaded.has(name)) { setActiveModel(name); toast(name + ' already loaded — switched to it'); return; }
+
+  const fileMap = new Map(arr.map(f => [f.name, f]));
+  const manager = new THREE.LoadingManager();
+  manager.setURLModifier(url => {
+    if (/^(https?:|data:|blob:)/i.test(url)) return url;
+    let rel = url.replace(/^\.\//, '');
+    try { rel = decodeURIComponent(rel); } catch (e) { }
+    let hit = fileMap.get(rel);
+    if (!hit) hit = fileMap.get(rel.split('/').pop());
+    if (hit) return URL.createObjectURL(hit);
+    return url;
+  });
+  const loader = new GLTFLoaderC(manager);
+  try {
+    if (DRACOLoaderC) loader.setDRACOLoader(new DRACOLoaderC().setDecoderPath(THREE_CDN + '/examples/jsm/libs/draco/gltf/'));
+    if (KTX2LoaderC) loader.setKTX2Loader(new KTX2LoaderC().setTranscoderPath(THREE_CDN + '/examples/jsm/libs/basis/').detectSupport(renderer));
+  } catch (e) { }
+  $('#model-note').innerHTML = 'loading <b>' + esc(name) + '</b>&hellip;';
+  try {
+    let gltf;
+    if (glb) gltf = await loader.parseAsync(await glb.arrayBuffer(), '');
+    else gltf = await loader.parseAsync(await main.text(), '');
+    registerModel(name, gltf);
+  } catch (e) {
+    $('#model-note').innerHTML = 'no model loaded';
+    toast('Failed to load ' + name + (e && e.message ? ': ' + e.message : ''), 'err');
+    console.error('[camtrack] gltf load failed', e);
+  }
+}
+function registerModel(name, gltf) {
+  const root = gltf.scene || (gltf.scenes && gltf.scenes[0]);
+  if (!root) { toast('That file has no scene', 'err'); return; }
+  const bb = new THREE.Box3().setFromObject(root);
+  if (bb.isEmpty()) bb.set(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1));
+  const box = { min: [bb.min.x, bb.min.y, bb.min.z], max: [bb.max.x, bb.max.y, bb.max.z] };
+  const diag = Math.hypot(box.max[0] - box.min[0], box.max[1] - box.min[1], box.max[2] - box.min[2]) || 1;
+  three.loaded.set(name, { scene: root, box, diag });
+
+  let entry = state.doc.models.find(m => m.file === name);
+  if (!entry) {
+    entry = { file: name, addedAt: new Date().toISOString(), bounds: null, tracks: [] };
+    state.doc.models.push(entry);
+    toast(name + ' added to the camdat document');
+  } else if (entry.bounds) {
+    const same = [0, 1, 2].every(i => Math.abs(entry.bounds.min[i] - box.min[i]) < 1e-3 && Math.abs(entry.bounds.max[i] - box.max[i]) < 1e-3);
+    if (!same) toast('Loaded model bounds differ from the camdat record — coordinates may be offset', 'warn');
+  }
+  entry.bounds = { min: box.min.slice(), max: box.max.slice() };
+  setActiveModel(name);
+  frameModel();
+  markDirty();
+}
+function setActiveModel(name) {
+  state.activeFile = name;
+  state.selection = null;
+  state.playing = false; state.playAll = false; state.t = 0;
+  for (const v of three.loaded.values()) if (v.scene.parent === scene) scene.remove(v.scene);
+  const loaded = three.loaded.get(name);
+  if (loaded) scene.add(loaded.scene);
+  rebuildGrid();
+  raycaster.params.Line = { threshold: Math.max((loaded ? loaded.diag : 10) * 0.008, 0.02) };
+  rebuildAll();
+}
+function frameModel() {
+  const loaded = three.loaded.get(state.activeFile);
+  const c = [0, 0, 0];
+  let diag = 10;
+  if (loaded) {
+    for (let i = 0; i < 3; i++) c[i] = (loaded.box.min[i] + loaded.box.max[i]) / 2;
+    diag = loaded.diag;
+  } else return;
+  orbitCam.position.set(c[0] + diag * 0.62, c[1] + diag * 0.45, c[2] + diag * 0.95);
+  controls.target.set(c[0], c[1], c[2]);
+  orbitCam.near = Math.max(diag / 2000, 0.005);
+  orbitCam.far = diag * 40;
+  orbitCam.updateProjectionMatrix();
+  pipCam.near = orbitCam.near;
+  pipCam.far = orbitCam.far;
+  pipCam.updateProjectionMatrix();
+}
+
+/* ========================================================== track visuals */
+function handleR() { return Math.max(activeModelInfo().diag * 0.013, 0.02); }
+function disposeObj(root) {
+  root.traverse(o => {
+    if (o.geometry && o.geometry !== sphereGeo) o.geometry.dispose();
+    if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose());
+  });
+}
+function clearVisuals() {
+  for (const v of visuals.values()) { trackRoot.remove(v.group); disposeObj(v.group); }
+  visuals.clear();
+}
+function rebuildVisuals() {
+  clearVisuals();
+  for (const tr of activeTracks()) buildVisual(tr);
+  const sel = selTrack();
+  visuals.forEach(v => { v.handles.visible = !!(sel && v.id === sel.id); });
+  trackRoot.visible = state.showPaths;
+  updateTrackCam(sel, 0);
+}
+function lineMat(color, opacity) {
+  return new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthTest: false });
+}
+function makePathGeometry(tr) {
+  const pts = [];
+  if (tr.type === 'line') {
+    pts.push(new THREE.Vector3(...tr.start), new THREE.Vector3(...tr.end));
+  } else if (tr.type === 'circle') {
+    const bounded = tr.arcBounds && tr.arcMaxDeg > tr.arcMinDeg;
+    const a0 = bounded ? tr.arcMinDeg : 0, a1 = bounded ? tr.arcMaxDeg : 360;
+    const N = 128;
+    for (let i = 0; i <= N; i++) {
+      const th = (a0 + (a1 - a0) * i / N) * DEG;
+      pts.push(new THREE.Vector3(tr.center[0] + tr.radiusX * Math.cos(th), tr.center[1], tr.center[2] + tr.radiusZ * Math.sin(th)));
+    }
+  } else {
+    // fixed: yaw-boundary wedge (rotation boundaries visualised)
+    const r = activeModelInfo().diag * 0.05;
+    const a0 = tr.yawBounds ? tr.yawMinDeg : tr.yawDeg, a1 = tr.yawBounds ? tr.yawMaxDeg : tr.yawDeg;
+    const N = 48;
+    for (let i = 0; i <= N; i++) {
+      const yaw = (a0 + (a1 - a0) * i / N) * DEG;
+      pts.push(new THREE.Vector3(
+        tr.position[0] - Math.sin(yaw) * r, tr.position[1], tr.position[2] - Math.cos(yaw) * r));
+    }
+  }
+  return new THREE.BufferGeometry().setFromPoints(pts);
+}
+function buildVisual(tr) {
+  const color = modelColor(tr);
+  const group = new THREE.Group();
+  const paths = new THREE.Group();
+  const handles = new THREE.Group();
+  const line = new THREE.Line(makePathGeometry(tr), lineMat(color, 0.95));
+  line.renderOrder = 10;
+  line.userData.trackId = tr.id;
+  paths.add(line);
+  let ghost = null;
+  if (tr.type === 'circle' && tr.arcBounds && tr.arcMaxDeg > tr.arcMinDeg) {
+    const pts = [];
+    for (let i = 0; i <= 128; i++) {
+      const th = i / 128 * Math.PI * 2;
+      pts.push(new THREE.Vector3(tr.center[0] + tr.radiusX * Math.cos(th), tr.center[1], tr.center[2] + tr.radiusZ * Math.sin(th)));
+    }
+    ghost = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineMat(color, 0.16));
+    ghost.renderOrder = 9;
+    paths.add(ghost);
+  }
+  buildHandles(tr, handles, color);
+  group.add(paths, handles);
+  trackRoot.add(group);
+  visuals.set(tr.id, { id: tr.id, group, paths, handles, line, ghost });
+}
+function yawHandlePos(tr) {
+  const L = activeModelInfo().diag * 0.07;
+  const yaw = tr.yawDeg * DEG;
+  return [tr.position[0] - Math.sin(yaw) * L, tr.position[1], tr.position[2] - Math.cos(yaw) * L];
+}
+function buildHandles(tr, handles, color) {
+  const R = handleR();
+  const mk = (role, pos, col) => {
+    const m = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: col, depthTest: false, transparent: true, opacity: 0.95 }));
+    m.scale.setScalar(R);
+    m.position.set(pos[0], pos[1], pos[2]);
+    m.renderOrder = 11;
+    m.userData = { trackId: tr.id, role };
+    handles.add(m);
+  };
+  if (tr.type === 'line') {
+    mk('start', tr.start, '#7fd18a');
+    mk('end', tr.end, '#e57373');
+  } else if (tr.type === 'circle') {
+    mk('center', tr.center, color);
+    mk('rx', [tr.center[0] + tr.radiusX, tr.center[1], tr.center[2]], '#ffb454');
+    mk('rz', [tr.center[0], tr.center[1], tr.center[2] + tr.radiusZ], '#9575cd');
+  } else {
+    mk('pos', tr.position, color);
+    mk('yaw', yawHandlePos(tr), '#ffb454');
+  }
+}
+function updateTrackVisual(tr) {
+  const v = visuals.get(tr.id);
+  if (!v) { rebuildVisuals(); return; }
+  v.line.geometry.dispose();
+  v.line.geometry = makePathGeometry(tr);
+  if (v.ghost) { v.ghost.geometry.dispose(); v.ghost.visible = tr.type === 'circle' && tr.arcBounds && tr.arcMaxDeg > tr.arcMinDeg; }
+  const R = handleR();
+  for (const m of v.handles.children) {
+    m.scale.setScalar(R);
+    const role = m.userData.role;
+    if (role === 'start') m.position.set(tr.start[0], tr.start[1], tr.start[2]);
+    else if (role === 'end') m.position.set(tr.end[0], tr.end[1], tr.end[2]);
+    else if (role === 'center') m.position.set(tr.center[0], tr.center[1], tr.center[2]);
+    else if (role === 'rx') m.position.set(tr.center[0] + tr.radiusX, tr.center[1], tr.center[2]);
+    else if (role === 'rz') m.position.set(tr.center[0], tr.center[1], tr.center[2] + tr.radiusZ);
+    else if (role === 'pos') m.position.set(tr.position[0], tr.position[1], tr.position[2]);
+    else if (role === 'yaw') m.position.set(...yawHandlePos(tr));
+  }
+  const sel = selTrack();
+  updateTrackCam(sel, 0);
+}
+
+/* ====================================================== pointer interaction */
+let drag = null;               // { trackId, role, plane, vertical }
+let hoverHandle = null;
+let downInfo = null;           // click-vs-drag detection for path selection
+
+function ndcFromEvent(e) {
+  const r = $('#gl').getBoundingClientRect();
+  return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+}
+function handleMeshes() {
+  const out = [];
+  visuals.forEach(v => { if (v.handles.visible) out.push(...v.handles.children); });
+  return out;
+}
+function pathLines() {
+  const out = [];
+  visuals.forEach(v => out.push(v.line, v.ghost));
+  return out.filter(Boolean);
+}
+function castHandles(e) {
+  if (!visuals.size) return null;
+  raycaster.setFromCamera(ndcFromEvent(e), orbitCam);
+  const hits = raycaster.intersectObjects(handleMeshes(), false);
+  return hits[0] || null;
+}
+function castPaths(e) {
+  if (!visuals.size || !state.showPaths) return null;
+  raycaster.setFromCamera(ndcFromEvent(e), orbitCam);
+  const hits = raycaster.intersectObjects(pathLines(), false);
+  return hits[0] || null;
+}
+
+function onCanvasDown(e) {
+  if (e.button !== 0) return;
+  downInfo = { x: e.clientX, y: e.clientY, t: performance.now() };
+  const hit = castHandles(e);
+  if (!hit) return;
+  const { trackId, role } = hit.object.userData;
+  const tr = activeTracks().find(t => t.id === trackId);
+  if (!tr) return;
+  const vertical = e.shiftKey;
+  const pos = hit.object.position;
+  let plane;
+  if (vertical) {
+    const n = orbitCam.position.clone().sub(pos.clone());
+    n.y = 0;
+    if (n.lengthSq() < 1e-8) n.set(0, 0, 1);
+    n.normalize();
+    plane = new THREE.Plane().setFromNormalAndCoplanarPoint(n, pos.clone());
+  } else {
+    plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -pos.y);
+  }
+  drag = { trackId, role, plane, vertical };
+  controls.enabled = false;
+  $('#gl').classList.add('dragging');
+  $('#gl').setPointerCapture(e.pointerId);
+  updateDragHint(e, tr, role);
+}
+function onPointerMove(e) {
+  if (drag) {
+    const tr = activeTracks().find(t => t.id === drag.trackId);
+    if (!tr) return;
+    raycaster.setFromCamera(ndcFromEvent(e), orbitCam);
+    const p = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(drag.plane, p)) {
+      applyHandleDrag(tr, drag.role, p, drag.vertical);
+      updateTrackVisual(tr);
+      refreshPropsValues();
+      markDirty();
+      updateDragHint(e, tr, drag.role);
+    }
+    return;
+  }
+  if (e.target === $('#gl')) {
+    const hit = castHandles(e);
+    if (hoverHandle && hoverHandle !== (hit && hit.object)) hoverHandle.scale.setScalar(handleR());
+    hoverHandle = hit ? hit.object : null;
+    if (hoverHandle) hoverHandle.scale.setScalar(handleR() * 1.4);
+    $('#gl').classList.toggle('handle', !!hoverHandle);
+  }
+}
+function onPointerUp(e) {
+  if (drag) {
+    drag = null;
+    controls.enabled = true;
+    $('#gl').classList.remove('dragging');
+    hideDragHint();
+    renderTrackList();
+    return;
+  }
+  if (downInfo && e.button === 0) {
+    const moved = Math.hypot(e.clientX - downInfo.x, e.clientY - downInfo.y);
+    const dt = performance.now() - downInfo.t;
+    if (moved < 6 && dt < 500) {
+      const hit = castPaths(e);
+      if (hit && hit.object.userData.trackId) selectTrack(hit.object.userData.trackId);
+      else if (e.target === $('#gl')) selectTrack(null);
+    }
+  }
+  downInfo = null;
+}
+function applyHandleDrag(tr, role, p, vertical) {
+  if (role === 'start' || role === 'end' || role === 'center' || role === 'pos') {
+    const key = role === 'pos' ? 'position' : role;
+    const cur = tr[key];
+    tr[key] = vertical ? [cur[0], p.y, cur[2]] : [p.x, cur[1], p.z];
+  } else if (role === 'rx') {
+    tr.radiusX = Math.max(Math.abs(p.x - tr.center[0]), 0.02);
+  } else if (role === 'rz') {
+    tr.radiusZ = Math.max(Math.abs(p.z - tr.center[2]), 0.02);
+  } else if (role === 'yaw') {
+    const dx = p.x - tr.position[0], dz = p.z - tr.position[2];
+    if (Math.hypot(dx, dz) > 1e-4) tr.yawDeg = r4(Math.atan2(-dx, -dz) / DEG);
+  }
+}
+function updateDragHint(e, tr, role) {
+  const el = $('#drag-hint');
+  let txt;
+  if (role === 'rx') txt = 'radiusX ' + tr.radiusX.toFixed(3) + ' m';
+  else if (role === 'rz') txt = 'radiusZ ' + tr.radiusZ.toFixed(3) + ' m';
+  else if (role === 'yaw') txt = 'yaw ' + tr.yawDeg.toFixed(1) + '\u00b0';
+  else {
+    const v = role === 'pos' ? tr.position : tr[role];
+    txt = 'x ' + v[0].toFixed(3) + '  y ' + v[1].toFixed(3) + '  z ' + v[2].toFixed(3) + ' m';
+  }
+  el.textContent = txt + (drag && drag.vertical ? '  (height)' : '');
+  el.style.display = 'block';
+  el.style.left = (e.clientX + 16) + 'px';
+  el.style.top = (e.clientY + 18) + 'px';
+}
+function hideDragHint() { $('#drag-hint').style.display = 'none'; }
+
+/* ================================================================ playback */
+function playTarget() {
+  if (state.playAll && state.playlist.length) return state.playlist[state.plIndex] || null;
+  return selTrack();
+}
+function playCycle(tr) {
+  const T = cycleDuration(tr);
+  if (isFinite(T) && T <= 0) return 8;      // static track: 8 s preview window
+  return T;
+}
+function setPlaying(on) {
+  if (on) {
+    if (state.playAll && state.playlist.length) {
+      state.playing = true;
+    } else {
+      const tr = selTrack();
+      if (!tr) { toast('Select or create a track first', 'warn'); return; }
+      if (state.t >= playCycle(tr)) state.t = 0;
+      state.playing = true;
+    }
+  } else {
+    state.playing = false;
+  }
+  updatePlaybarUI();
+}
+function stopPlayback() {
+  state.playing = false;
+  state.playAll = false;
+  state.playlist = [];
+  updatePlaybarUI();
+}
+function startPlayAll() {
+  const tracks = activeTracks().filter(t => t.enabled !== false);
+  if (!tracks.length) { toast('No enabled tracks for the active model', 'warn'); return; }
+  state.playAll = true;
+  state.playlist = tracks;
+  state.plIndex = 0;
+  state.selection = tracks[0].id;
+  state.t = 0;
+  state.playing = true;
+  rebuildVisuals();
+  renderTrackList();
+  renderProps();
+  updatePlaybarUI();
+}
+function tickPlayback(dt) {
+  if (!state.playing) return;
+  const tr = playTarget();
+  if (!tr) { stopPlayback(); return; }
+  state.t += dt * state.rate;
+  const T = playCycle(tr);
+  if (state.t >= T) {
+    if (state.playAll) {
+      state.plIndex++;
+      if (state.plIndex >= state.playlist.length) { stopPlayback(); return; }
+      state.selection = state.playlist[state.plIndex].id;
+      state.t = 0;
+      rebuildVisuals();
+      renderTrackList();
+      renderProps();
+      updatePlaybarUI();
+    } else if (tr.loopMode === 'once' || cycleDuration(tr) <= 0) {
+      state.t = T;
+      setPlaying(false);
+    } else {
+      state.t = state.t % T;
+    }
+  }
+}
+function updatePlaybarUI() {
+  const tr = playTarget() || selTrack();
+  const bar = $('#playbar');
+  if (!tr) { bar.classList.remove('show'); $('#pip-box').classList.remove('show'); return; }
+  bar.classList.add('show');
+  $('#btn-play').textContent = state.playing ? 'Pause' : 'Play';
+  $('#btn-playall').textContent = state.playAll ? 'Stop all' : 'Play all';
+  $('#pb-name').textContent = (state.playAll ? (state.plIndex + 1) + '/' + state.playlist.length + ' \u00b7 ' : '') + (tr.name || tr.type);
+  const T = playCycle(tr);
+  $('#pb-time').innerHTML = '<b>' + state.t.toFixed(1) + '</b> / ' + durText(T);
+  const scrub = $('#scrub');
+  scrub.disabled = !isFinite(T);
+  if (isFinite(T) && document.activeElement !== scrub) scrub.value = Math.round(state.t / T * 1000);
+  const pip = $('#pip-box');
+  if (state.showPip) {
+    pip.classList.add('show');
+    $('#pip-label').textContent = 'TRACK CAM \u00b7 ' + (tr.name || tr.type);
+  } else pip.classList.remove('show');
+}
+
+/* ------------------------------------------------------------------ render */
+function updatePipCam(tr, t) {
+  if (!tr) return;
+  const ev = evalTrack(tr, t);
+  pipCam.fov = ev.fovDeg;
+  pipCam.updateProjectionMatrix();
+  pipCam.position.set(ev.pos[0], ev.pos[1], ev.pos[2]);
+  /* smoothed orientation (exact when paused/seeking) — kept in sync by
+     updateTrackCam, which the frame loop runs before render() */
+  pipCam.quaternion.copy(turn.quat && turn.trackId === tr.id ? turn.quat : evTargetQuat(ev));
+}
+function render() {
+  const size = new THREE.Vector2();
+  renderer.getSize(size);
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, size.x, size.y);
+  renderer.render(scene, orbitCam);
+
+  const tr = state.showPip ? (playTarget() || selTrack()) : null;
+  if (tr && $('#pip-box').classList.contains('show')) {
+    const rect = $('#pip-box').getBoundingClientRect();
+    const cr = renderer.domElement.getBoundingClientRect();
+    const x = rect.left - cr.left, yTop = rect.top - cr.top;
+    const y = cr.height - (yTop + rect.height);
+    updatePipCam(tr, state.t);
+    pipCam.aspect = rect.width / rect.height;
+    pipCam.updateProjectionMatrix();
+    /* hide editor-only overlays (camera body + direction pointer, path
+       lines, drag handles, grid) so TRACK CAM shows the room itself — the
+       old cone sat exactly at this camera's eye and blocked the view */
+    const overlays = [camBody, trackRoot, gizmoRoot, gridGroup].filter(Boolean);
+    const overlayVis = overlays.map(o => o.visible);
+    overlays.forEach(o => { o.visible = false; });
+    renderer.setScissorTest(true);
+    renderer.setScissor(x, y, rect.width, rect.height);
+    renderer.setViewport(x, y, rect.width, rect.height);
+    renderer.clearDepth();
+    renderer.render(scene, pipCam);
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, size.x, size.y);
+    overlays.forEach((o, i) => { o.visible = overlayVis[i]; });
+  }
+}
+function startRenderLoop() {
+  let uiAcc = 0;
+  function frame() {
+    requestAnimationFrame(frame);
+    const dt = Math.min(clock.getDelta(), 0.1);
+    controls.update();
+    tickPlayback(dt);
+    const tr = playTarget() || selTrack();
+    updateTrackCam(tr, state.playing ? dt : 0);   /* dt>0 only while playing: smoothing is playback-only */
+    render();
+    uiAcc += dt;
+    if (uiAcc > 0.1) { uiAcc = 0; if (tr) updatePlaybarUI(); }
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ================================================================== panels */
+function updateModelNote() {
+  const note = $('#model-note');
+  const loaded = three.loaded.get(state.activeFile);
+  if (loaded) {
+    const s = [0, 1, 2].map(i => (loaded.box.max[i] - loaded.box.min[i]).toFixed(2)).join(' \u00d7 ');
+    note.innerHTML = '<b>' + esc(state.activeFile) + '</b> \u00b7 ' + s + ' m';
+  } else if (state.activeFile) {
+    note.innerHTML = '<b>' + esc(state.activeFile) + '</b> \u00b7 file not loaded';
+  } else if (location.protocol === 'file:') {
+    note.innerHTML = 'no model \u00b7 file:// detected — serve over http for module support';
+  } else {
+    note.textContent = 'no model loaded';
+  }
+}
+function renderModelsPanel() {
+  const list = $('#models-list');
+  list.innerHTML = '';
+  const models = state.doc.models;
+  $('#models-count').textContent = models.length ? models.length + ' total' : '';
+  $('#models-hint').style.display = models.length ? 'none' : '';
+  models.forEach(m => {
+    const row = h('div', 'model-row' + (m.file === state.activeFile ? ' active' : ''));
+    const loaded = three.loaded.has(m.file);
+    row.innerHTML = '<div class="mr-main"><div class="mr-name">' + esc(m.file) + '</div>' +
+      '<div class="mr-sub">' + m.tracks.length + ' track' + (m.tracks.length === 1 ? '' : 's') +
+      ' \u00b7 ' + (loaded ? '<span class="ok">loaded</span>' : 'not loaded') + '</div></div>';
+    if (!loaded) {
+      const btn = h('button', 'btn tiny', 'Load');
+      btn.title = 'pick the actual glTF file for this entry';
+      btn.addEventListener('click', ev => { ev.stopPropagation(); $('#file-gltf').click(); });
+      row.appendChild(btn);
+    }
+    row.addEventListener('click', () => { setActiveModel(m.file); toast('Active model: ' + m.file + (three.loaded.has(m.file) ? '' : ' — load its glTF file to see the room')); });
+    list.appendChild(row);
+  });
+}
+function renderTrackList() {
+  const list = $('#track-list');
+  list.innerHTML = '';
+  const tracks = activeTracks();
+  $('#tracks-hint').style.display = tracks.length ? 'none' : '';
+  const noModel = !state.activeFile;
+  $('#btn-add-line').disabled = noModel;
+  $('#btn-add-circle').disabled = noModel;
+  $('#btn-add-fixed').disabled = noModel;
+  tracks.forEach(tr => {
+    const row = h('div', 'track-row' + (tr.id === state.selection ? ' sel' : '') + (tr.enabled === false ? ' off' : ''));
+    const T = cycleDuration(tr);
+    let sub = tr.type.toUpperCase() + ' \u00b7 ' + durText(T);
+    if (tr.type === 'line') sub += ' \u00b7 ' + tr.speedMS + ' m/s';
+    else if (tr.type === 'circle') {
+      sub += ' \u00b7 ' + tr.speedDegS + '\u00b0/s' +
+        (tr.arcBounds && tr.arcMaxDeg > tr.arcMinDeg ? ' \u00b7 arc ' + tr.arcMinDeg + '\u2026' + tr.arcMaxDeg + '\u00b0' : ' \u00b7 r' + tr.radiusX + (tr.radiusZ !== tr.radiusX ? '\u00d7' + tr.radiusZ : ''));
+    } else {
+      sub += ' \u00b7 yaw ' + (tr.yawBounds && tr.yawMaxDeg > tr.yawMinDeg ? tr.yawMinDeg + '\u2026' + tr.yawMaxDeg + '\u00b0' : (Math.abs(tr.yawSpeedDegS) || 0) + '\u00b0/s') +
+        (tr.pitchSpeedDegS ? ' \u00b7 pitch ' + (tr.pitchBounds ? tr.pitchMinDeg + '\u2026' + tr.pitchMaxDeg + '\u00b0' : tr.pitchSpeedDegS + '\u00b0/s') : '');
+    }
+    row.innerHTML = '<span class="chip" style="background:' + modelColor(tr) + '"></span>' +
+      '<div class="tr-main"><div class="tr-name">' + esc(tr.name || '(unnamed)') + '</div>' +
+      '<div class="tr-sub">' + esc(sub) + '</div></div>';
+    const eye = h('button', 'tr-btn' + (tr.enabled !== false ? ' on' : ''), tr.enabled !== false ? '\u25c9' : '\u25cb');
+    eye.title = 'enable / disable track';
+    eye.addEventListener('click', ev => {
+      ev.stopPropagation();
+      tr.enabled = tr.enabled === false;
+      renderTrackList(); renderModelsPanel(); markDirty();
+    });
+    const play = h('button', 'tr-btn', '\u25b6');
+    play.title = 'preview this track';
+    play.addEventListener('click', ev => {
+      ev.stopPropagation();
+      selectTrack(tr.id);
+      state.t = 0;
+      setPlaying(true);
+    });
+    row.append(eye, play);
+    row.addEventListener('click', () => selectTrack(tr.id));
+    list.appendChild(row);
+  });
+}
+
+/* --------------------------------------------------------- track selection */
+function selectTrack(id) {
+  if (id) {
+    /* if the track belongs to another (already loaded) model, switch to it */
+    const owner = state.doc.models.find(m => m.tracks.some(t => t.id === id));
+    if (owner && owner.file !== state.activeFile) { setActiveModel(owner.file); }
+    else if (owner && state.selection !== id) { state.selection = id; }
+  }
+  state.selection = id;
+  state.playAll = false;
+  state.playlist = [];
+  state.t = 0;
+  if (!id) state.playing = false;
+  rebuildVisuals();
+  renderTrackList();
+  renderProps();
+  updatePlaybarUI();
+}
+function addTrack(type) {
+  if (!state.activeFile) { toast('Load a glTF first — it defines the coordinate space for the tracks', 'warn'); return; }
+  const m = activeModel();
+  if (!m) return;
+  const tr = makeTrack(type);
+  m.tracks.push(tr);
+  state.selection = tr.id;
+  state.t = 0;
+  state.playAll = false; state.playlist = [];
+  rebuildVisuals();
+  renderTrackList();
+  renderModelsPanel();
+  renderProps();
+  updatePlaybarUI();
+  markDirty();
+  toast(tr.name + ' added — drag the handles in the viewport, then fine-tune the numbers');
+}
+function duplicateTrack() {
+  const tr = selTrack();
+  if (!tr) return;
+  const copy = JSON.parse(JSON.stringify(tr));
+  copy.id = newId();
+  copy.name = (tr.name || tr.type) + ' copy';
+  activeModel().tracks.push(copy);
+  state.selection = copy.id;
+  state.t = 0;
+  rebuildVisuals(); renderTrackList(); renderModelsPanel(); renderProps(); updatePlaybarUI();
+  markDirty();
+}
+async function deleteTrack() {
+  const tr = selTrack();
+  if (!tr) return;
+  const ok = await confirmDialog('Delete track "' + (tr.name || tr.type) + '"?', 'Delete');
+  if (!ok) return;
+  const m = activeModel();
+  m.tracks = m.tracks.filter(t => t.id !== tr.id);
+  state.selection = null;
+  rebuildVisuals(); renderTrackList(); renderModelsPanel(); renderProps(); updatePlaybarUI();
+  markDirty();
+}
+
+/* ------------------------------------------------------------ props panel */
+let propRefreshers = [];
+function refreshPropsValues() { propRefreshers.forEach(f => f()); }
+function fmtNum(v) { return String(Math.round(v * 1000) / 1000); }
+function numRow(label, opts, unit) {
+  const row = h('div', 'frow');
+  const lab = document.createElement('label');
+  lab.textContent = label;
+  const inp = h('input', 'num');
+  inp.type = 'number';
+  inp.step = opts.step != null ? String(opts.step) : 'any';
+  inp.value = fmtNum(opts.get());
+  inp.addEventListener('input', () => {
+    const v = parseFloat(inp.value);
+    if (!isFinite(v)) { inp.classList.add('bad'); return; }
+    inp.classList.remove('bad');
+    let vv = v;
+    if (opts.min != null) vv = Math.max(vv, opts.min);
+    if (opts.max != null) vv = Math.min(vv, opts.max);
+    opts.set(vv);
+    onPropChanged();
+  });
+  row.append(lab, inp);
+  if (unit) row.appendChild(h('span', 'u', unit));
+  row._refresh = () => { if (document.activeElement !== inp) inp.value = fmtNum(opts.get()); };
+  return row;
+}
+function vec3Row(label, get, set, unit) {
+  const row = h('div', 'frow');
+  const lab = document.createElement('label');
+  lab.textContent = label;
+  const wrap = h('div', 'vec3');
+  const parts = [];
+  for (let i = 0; i < 3; i++) {
+    const idx = i;
+    const inp = h('input', 'num');
+    inp.type = 'number';
+    inp.step = 'any';
+    inp.value = fmtNum(get()[idx]);
+    inp.title = ['x', 'y', 'z'][idx];
+    inp.addEventListener('input', () => {
+      const v = parseFloat(inp.value);
+      if (!isFinite(v)) { inp.classList.add('bad'); return; }
+      inp.classList.remove('bad');
+      const a = get().slice();
+      a[idx] = v;
+      set(a);
+      onPropChanged();
+    });
+    parts.push(inp);
+    wrap.appendChild(inp);
+  }
+  row.append(lab, wrap);
+  if (unit) row.appendChild(h('span', 'u', unit));
+  row._refresh = () => parts.forEach((p, i) => { if (document.activeElement !== p) p.value = fmtNum(get()[i]); });
+  return row;
+}
+function selectRow(label, options, get, set) {
+  const row = h('div', 'frow');
+  const lab = document.createElement('label');
+  lab.textContent = label;
+  const sel = h('select', 'sel');
+  options.forEach(o => {
+    const op = document.createElement('option');
+    op.value = o.v;
+    op.textContent = o.t;
+    sel.appendChild(op);
+  });
+  sel.value = get();
+  sel.addEventListener('change', () => { set(sel.value); onPropChanged(); if (get() !== sel.value) sel.value = get(); });
+  row.append(lab, sel);
+  row._refresh = () => { sel.value = get(); };
+  return row;
+}
+function checkRow(label, get, set) {
+  const row = h('label', 'check-row');
+  const inp = document.createElement('input');
+  inp.type = 'checkbox';
+  inp.checked = !!get();
+  inp.addEventListener('change', () => { set(inp.checked); onPropChanged(); });
+  row.append(inp, document.createTextNode(' ' + label));
+  row._refresh = () => { inp.checked = !!get(); };
+  return row;
+}
+function onPropChanged() {
+  const tr = selTrack();
+  if (!tr) return;
+  updateTrackVisual(tr);
+  renderTrackList();
+  updatePlaybarUI();
+  markDirty();
+}
+
+const TYPE_NOTES = {
+  line: 'Camera moves in a straight line from start to end at constant speed. pingPong travels back and forth; loop jumps back to the start.',
+  circle: 'Camera rides an ellipse in the horizontal plane (radiusX = radiusZ gives a circle) around center. Optionally limit the arc for a back-and-forth sweep instead of a full lap.',
+  fixed: 'Camera stands still and rotates. yaw/pitch advance at their speeds; when boundaries are set the rotation mirrors between them (rotation boundaries).'
+};
+const LOOP_OPTS = [
+  { v: 'loop', t: 'loop — wrap back to start' },
+  { v: 'pingPong', t: 'pingPong — mirror at the ends' },
+  { v: 'once', t: 'once — stop at the end' }
+];
+
+function renderProps() {
+  const body = $('#props-body');
+  const empty = $('#props-empty');
+  const tr = selTrack();
+  propRefreshers = [];
+  body.innerHTML = '';
+  if (!tr) {
+    body.style.display = 'none';
+    empty.style.display = '';
+    return;
+  }
+  body.style.display = '';
+  empty.style.display = 'none';
+  const add = node => {
+    body.appendChild(node);
+    if (node._refresh) propRefreshers.push(() => node._refresh());
+  };
+  const gh = t => add(h('div', 'group-h', t));
+
+  {
+    const note = h('div', null, esc(TYPE_NOTES[tr.type]));
+    note.style.cssText = 'color:var(--text-dim);font-size:11px;line-height:1.5;margin:0 0 4px';
+    add(note);
+  }
+
+  /* name */
+  {
+    const row = h('div', 'frow');
+    const lab = document.createElement('label');
+    lab.textContent = 'Name';
+    const inp = h('input', 'txt');
+    inp.type = 'text';
+    inp.value = tr.name;
+    inp.maxLength = 60;
+    inp.addEventListener('input', () => { tr.name = inp.value; renderTrackList(); updatePlaybarUI(); markDirty(); });
+    row.append(lab, inp);
+    add(row);
+  }
+  gh('Common');
+  add(numRow('Field of view', { get: () => tr.fovDeg, set: v => tr.fovDeg = v, step: 1, min: 5, max: 140 }, '\u00b0'));
+  add(selectRow('Loop mode', LOOP_OPTS, () => tr.loopMode, v => tr.loopMode = v));
+
+  if (tr.type === 'line') {
+    gh('Path');
+    add(vec3Row('Start', () => tr.start, v => tr.start = v, 'm'));
+    add(vec3Row('End', () => tr.end, v => tr.end = v, 'm'));
+    add(numRow('Speed', { get: () => tr.speedMS, set: v => tr.speedMS = v, step: 0.1, min: 0.01 }, 'm/s'));
+    gh('Look direction');
+    add(selectRow('Look mode', [
+      { v: 'path', t: 'path — along travel' },
+      { v: 'point', t: 'point — at a target' },
+      { v: 'fixed', t: 'fixed — hold direction' }
+    ], () => tr.lookMode, v => { tr.lookMode = v; renderProps(); }));
+    if (tr.lookMode === 'point') add(vec3Row('Look at', () => tr.lookAt, v => tr.lookAt = v, 'm'));
+    if (tr.lookMode === 'fixed') {
+      add(numRow('Yaw', { get: () => tr.yawDeg, set: v => tr.yawDeg = v, step: 1 }, '\u00b0'));
+      add(numRow('Pitch', { get: () => tr.pitchDeg, set: v => tr.pitchDeg = v, step: 1 }, '\u00b0'));
+    }
+  } else if (tr.type === 'circle') {
+    gh('Path');
+    add(vec3Row('Center', () => tr.center, v => tr.center = v, 'm'));
+    add(numRow('Radius X', { get: () => tr.radiusX, set: v => tr.radiusX = v, step: 0.1, min: 0.02 }, 'm'));
+    add(numRow('Radius Z', { get: () => tr.radiusZ, set: v => tr.radiusZ = v, step: 0.1, min: 0.02 }, 'm'));
+    add(numRow('Start angle', { get: () => tr.startAngleDeg, set: v => tr.startAngleDeg = v, step: 1 }, '\u00b0'));
+    add(selectRow('Direction', [
+      { v: 'cw', t: 'cw — clockwise from above' },
+      { v: 'ccw', t: 'ccw — counter-clockwise' }
+    ], () => tr.direction, v => tr.direction = v));
+    add(numRow('Speed', { get: () => tr.speedDegS, set: v => tr.speedDegS = v, step: 0.5, min: 0.01 }, '\u00b0/s'));
+    add(checkRow('Limit arc (rotation boundaries)', () => tr.arcBounds, v => { tr.arcBounds = v; renderProps(); }));
+    if (tr.arcBounds) {
+      add(numRow('Arc min', { get: () => tr.arcMinDeg, set: v => tr.arcMinDeg = v, step: 1 }, '\u00b0'));
+      add(numRow('Arc max', { get: () => tr.arcMaxDeg, set: v => tr.arcMaxDeg = v, step: 1 }, '\u00b0'));
+    }
+    gh('Look direction');
+    add(selectRow('Look mode', [
+      { v: 'center', t: 'center — look at ellipse center' },
+      { v: 'point', t: 'point — at a target' },
+      { v: 'path', t: 'path — along travel (tangent)' },
+      { v: 'fixed', t: 'fixed — hold direction' }
+    ], () => tr.lookMode, v => { tr.lookMode = v; renderProps(); }));
+    if (tr.lookMode === 'point') add(vec3Row('Look at', () => tr.lookAt, v => tr.lookAt = v, 'm'));
+    if (tr.lookMode === 'fixed') {
+      add(numRow('Yaw', { get: () => tr.yawDeg, set: v => tr.yawDeg = v, step: 1 }, '\u00b0'));
+      add(numRow('Pitch', { get: () => tr.pitchDeg, set: v => tr.pitchDeg = v, step: 1 }, '\u00b0'));
+    }
+  } else {
+    gh('Position & rotation');
+    add(vec3Row('Position', () => tr.position, v => tr.position = v, 'm'));
+    add(numRow('Yaw start', { get: () => tr.yawDeg, set: v => tr.yawDeg = v, step: 1 }, '\u00b0'));
+    add(numRow('Pitch start', { get: () => tr.pitchDeg, set: v => tr.pitchDeg = v, step: 1 }, '\u00b0'));
+    add(numRow('Yaw speed', { get: () => tr.yawSpeedDegS, set: v => tr.yawSpeedDegS = v, step: 0.5 }, '\u00b0/s'));
+    add(numRow('Pitch speed', { get: () => tr.pitchSpeedDegS, set: v => tr.pitchSpeedDegS = v, step: 0.5 }, '\u00b0/s'));
+    add(checkRow('Yaw boundaries (mirror between min/max)', () => tr.yawBounds, v => { tr.yawBounds = v; renderProps(); }));
+    if (tr.yawBounds) {
+      add(numRow('Yaw min', { get: () => tr.yawMinDeg, set: v => tr.yawMinDeg = v, step: 1 }, '\u00b0'));
+      add(numRow('Yaw max', { get: () => tr.yawMaxDeg, set: v => tr.yawMaxDeg = v, step: 1 }, '\u00b0'));
+    }
+    add(checkRow('Pitch boundaries (mirror between min/max)', () => tr.pitchBounds, v => { tr.pitchBounds = v; renderProps(); }));
+    if (tr.pitchBounds) {
+      add(numRow('Pitch min', { get: () => tr.pitchMinDeg, set: v => tr.pitchMinDeg = v, step: 1 }, '\u00b0'));
+      add(numRow('Pitch max', { get: () => tr.pitchMaxDeg, set: v => tr.pitchMaxDeg = v, step: 1 }, '\u00b0'));
+    }
+  }
+
+  const actions = h('div', 'props-actions');
+  const dup = h('button', 'btn', 'Duplicate');
+  dup.addEventListener('click', duplicateTrack);
+  const del = h('button', 'btn danger', 'Delete track');
+  del.addEventListener('click', deleteTrack);
+  actions.append(dup, del);
+  add(actions);
+}
+
+/* ================================================================= wiring */
+$('#btn-load-gltf').addEventListener('click', () => $('#file-gltf').click());
+$('#file-gltf').addEventListener('change', e => {
+  if (e.target.files.length) loadModelFiles(e.target.files);
+  e.target.value = '';
+});
+$('#btn-import').addEventListener('click', () => $('#file-json').click());
+$('#file-json').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) importCamdat(f);
+  e.target.value = '';
+});
+$('#btn-export').addEventListener('click', exportCamdat);
+$('#btn-new').addEventListener('click', newDoc);
+$('#btn-preview-json').addEventListener('click', () => {
+  showModal({
+    title: 'camdat.json preview',
+    html: '<pre style="max-height:60vh;overflow:auto">' + esc(JSON.stringify(docToJSON(), null, 2)) + '</pre>',
+    buttons: [{ label: 'Close' }]
+  });
+});
+
+$('#btn-add-line').addEventListener('click', () => addTrack('line'));
+$('#btn-add-circle').addEventListener('click', () => addTrack('circle'));
+$('#btn-add-fixed').addEventListener('click', () => addTrack('fixed'));
+
+$('#btn-grid').addEventListener('click', () => {
+  state.showGrid = !state.showGrid;
+  gridGroup.visible = state.showGrid;
+  $('#btn-grid').classList.toggle('on', state.showGrid);
+});
+$('#btn-paths').addEventListener('click', () => {
+  state.showPaths = !state.showPaths;
+  trackRoot.visible = state.showPaths;
+  $('#btn-paths').classList.toggle('on', state.showPaths);
+});
+$('#btn-pip').addEventListener('click', () => {
+  state.showPip = !state.showPip;
+  $('#btn-pip').classList.toggle('on', state.showPip);
+  updatePlaybarUI();
+});
+$('#btn-help').addEventListener('click', showHelp);
+
+$('#btn-play').addEventListener('click', () => {
+  if (state.playAll) stopPlayback();
+  else setPlaying(!state.playing);
+});
+$('#btn-playall').addEventListener('click', () => {
+  if (state.playAll) stopPlayback();
+  else startPlayAll();
+});
+$('#scrub').addEventListener('input', e => {
+  const tr = playTarget() || selTrack();
+  if (!tr) return;
+  const T = playCycle(tr);
+  if (!isFinite(T)) return;
+  state.t = e.target.value / 1000 * T;
+  updateTrackCam(tr, 0);            /* exact pose on seek */
+});
+$('#rate').addEventListener('change', e => { state.rate = +e.target.value; });
+
+/* smooth-turn settings */
+function saveSettings() {
+  try { localStorage.setItem(LS_KEY + '.settings', JSON.stringify({ smoothTurns: turn.enabled, turnRateDegS: turn.rateDegS })); } catch (e) { }
+}
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(LS_KEY + '.settings');
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (typeof s.smoothTurns === 'boolean') turn.enabled = s.smoothTurns;
+      if (isFinite(+s.turnRateDegS)) turn.rateDegS = Math.min(720, Math.max(10, +s.turnRateDegS));
+    }
+  } catch (e) { }
+  $('#btn-smooth').classList.toggle('on', turn.enabled);
+  $('#turn-rate').value = turn.rateDegS;
+}
+$('#btn-smooth').addEventListener('click', () => {
+  turn.enabled = !turn.enabled;
+  $('#btn-smooth').classList.toggle('on', turn.enabled);
+  saveSettings();
+  toast(turn.enabled ? 'Smooth turns on — bounded turn rate during playback' : 'Smooth turns off — exact orientation at all times');
+});
+$('#turn-rate').addEventListener('change', e => {
+  turn.rateDegS = Math.min(720, Math.max(10, +e.target.value || 160));
+  e.target.value = turn.rateDegS;
+  saveSettings();
+});
+
+/* drag & drop: glTF files (or a camdat.json) */
+$('#viewport').addEventListener('dragover', e => e.preventDefault());
+$('#viewport').addEventListener('drop', e => {
+  e.preventDefault();
+  const files = [...e.dataTransfer.files];
+  if (!files.length) return;
+  if (files.length === 1 && /\.json$/i.test(files[0].name)) importCamdat(files[0]);
+  else loadModelFiles(files);
+});
+
+/* keyboard */
+window.addEventListener('keydown', e => {
+  if (e.target.matches('input, select, textarea')) return;
+  if ($('#modal-root').classList.contains('show')) {
+    if (e.key === 'Escape') closeModal();
+    return;
+  }
+  switch (e.key.toLowerCase()) {
+    case ' ':
+      e.preventDefault();
+      if (state.playAll) stopPlayback(); else setPlaying(!state.playing);
+      break;
+    case 'delete':
+    case 'backspace':
+      deleteTrack();
+      break;
+    case 'd':
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); duplicateTrack(); }
+      break;
+    case 'f':
+      frameModel();
+      break;
+    case 'g': $('#btn-grid').click(); break;
+    case 'p': $('#btn-paths').click(); break;
+    case 'c': $('#btn-pip').click(); break;
+    case 's': $('#btn-smooth').click(); break;
+    case 'h': showHelp(); break;
+    case 'escape': selectTrack(null); break;
+  }
+});
+
+function rebuildAll() {
+  renderModelsPanel();
+  renderTrackList();
+  renderProps();
+  rebuildVisuals();
+  updatePlaybarUI();
+  updateModelNote();
+}
+
+/* ================================================================== help */
+function showHelp() {
+  showModal({
+    title: 'CamTrack Editor — help & camdat.json format',
+    html: HELP_HTML,
+    buttons: [{ label: 'Close' }]
+  });
+}
+const HELP_HTML = [
+  '<h3>Quick start</h3>',
+  '<ol style="margin:4px 0;padding-left:20px">',
+  '<li><b>Load glTF</b> — pick a .glb (or a .gltf together with its .bin / texture files; drag &amp; drop works). The file is added to the camdat document automatically.</li>',
+  '<li><b>Add a track</b> — Line, Circle or Fixed. Sensible defaults are placed inside the model\u2019s bounds.</li>',
+  '<li><b>Drag the handles</b> in the viewport to position the path. <b>Shift-drag</b> a handle to change its height. The radius handles sit on the X and Z axes of the ellipse; the amber handle on a Fixed track sets its yaw.</li>',
+  '<li><b>Tune the numbers</b> — speed, rotation boundaries, look target, FOV, loop mode.</li>',
+  '<li><b>Preview</b> — select a track and press Play (or the \u25b6 button on a track row). The TRACK CAM picture-in-picture shows exactly what the track camera sees. Scrub the timeline, change the preview rate.</li>',
+  '<li><b>Export camdat.json</b> — done. Import it back any time to continue editing; your work is also autosaved in the browser.</li>',
+  '</ol>',
+  '<h3>Mouse &amp; keys</h3>',
+  '<table><tr><th>Input</th><th>Action</th></tr>',
+  '<tr><td>drag / wheel</td><td>orbit / zoom the editor view (does not affect tracks)</td></tr>',
+  '<tr><td>click path</td><td>select that track</td></tr>',
+  '<tr><td>drag handle</td><td>move point (start/end/center/position, radii, yaw)</td></tr>',
+  '<tr><td>Shift + drag handle</td><td>move the handle vertically (height)</td></tr>',
+  '<tr><td>Space</td><td>play / pause &nbsp;&nbsp; <b>F</b> frame model &nbsp;&nbsp; <b>G</b> grid &nbsp;&nbsp; <b>P</b> paths &nbsp;&nbsp; <b>C</b> track-cam &nbsp;&nbsp; <b>H</b> help</td></tr>',
+  '<tr><td>Del / Backspace</td><td>delete selected track</td></tr>',
+  '<tr><td>Ctrl/Cmd + D</td><td>duplicate selected track</td></tr>',
+  '</table>',
+  '<h3>Track types</h3>',
+  '<p><b>line</b> — straight move from <code>start</code> to <code>end</code> at <code>speedMS</code> (m/s). <b>circle</b> — rides the ellipse <code>center + [radiusX\u00b7cos\u03b8, 0, radiusZ\u00b7sin\u03b8]</code> at <code>speedDegS</code> (\u00b0/s); set <code>radiusX = radiusZ</code> for a circle; optionally bound \u03b8 with <code>arcMinDeg/arcMaxDeg</code> for a sweeping arc. <b>fixed</b> — stands at <code>position</code>; yaw/pitch rotate at their speeds, mirroring between their boundaries when set.</p>',
+  '<p>Options common to all: <b>speed</b>, <b>rotation boundaries</b> (arc limits for circles, yaw/pitch limits for fixed), <b>loopMode</b> (loop / pingPong / once), <b>lookMode</b> (center / point / path / fixed) with <code>lookAt</code>, <b>fovDeg</b>, <b>enabled</b>. All motion is constant-speed by design (no easing) — a fixed camera track.</p>',
+  '<h3>camdat.json structure</h3>',
+  '<pre>' + esc(JSON.stringify({
+    format: 'camdat', version: 1,
+    units: { length: 'meters', angle: 'degrees', time: 'seconds', up: '+Y', handedness: 'right-handed (glTF)' },
+    models: [{
+      file: 'SH1.glb',
+      addedAt: '2026-09-11T00:00:00Z',
+      bounds: { min: [-4.1, 0, -3.2], max: [4.1, 2.8, 3.2] },
+      tracks: [
+        { id: 't1', name: 'Dolly', type: 'line', enabled: true, fovDeg: 60, loopMode: 'pingPong', start: [-3, 1.5, 0], end: [3, 1.5, 0], speedMS: 0.8, lookMode: 'path', durationSec: 15 },
+        { id: 't2', name: 'Orbit', type: 'circle', enabled: true, fovDeg: 60, loopMode: 'loop', center: [0, 1.6, 0], radiusX: 2.5, radiusZ: 2.5, startAngleDeg: 0, direction: 'cw', speedDegS: 6, lookMode: 'center', durationSec: 60 },
+        { id: 't3', name: 'Corner pan', type: 'fixed', enabled: true, fovDeg: 60, loopMode: 'pingPong', position: [2, 1.6, 2], yawDeg: 45, pitchDeg: 0, yawSpeedDegS: 3, pitchSpeedDegS: 0, yawMinDeg: -30, yawMaxDeg: 90, durationSec: 80 }
+      ]
+    }]
+  }, null, 2)) + '</pre>',
+  '<p>Fields are emitted per type (irrelevant fields are omitted). <code>bounds</code> records the model\u2019s bounding box at authoring time so a consumer can sanity-check placement without loading the glTF. <code>durationSec</code> is informational — one full playback cycle; authoritative values are the parameters. Models are matched by file name (basename).</p>',
+  '<h3>Reference playback (port this to your program)</h3>',
+  '<pre>' + esc([
+    '// camdat playback reference — degrees, seconds, +Y up, right-handed',
+    'function tri01(u){ u=((u%2)+2)%2; return u<1?u:2-u; }',
+    'function phase01(t,T,mode){',
+    '  if(!(T>0)) return 0;',
+    '  const u=t/T;',
+    '  if(mode==="loop") return ((u%1)+1)%1;',
+    '  if(mode==="once") return Math.min(u,1);',
+    '  return tri01(u);                       // pingPong',
+    '}',
+    'function angleAt(t,a0,w,dir,min,max,mode){   // w>0, dir=+1/-1',
+    '  const v=a0+dir*w*t;',
+    '  if(!(max>min)) return v;               // free rotation',
+    '  const a=Math.min(Math.max(a0,min),max);',
+    '  const x=(a+dir*w*t)-min, span=max-min;',
+    '  if(mode==="loop") return min+((x%span)+span)%span;',
+    '  if(mode==="once") return Math.min(Math.max(a+dir*w*t,min),max);',
+    '  const k=Math.floor(x/span), r=x-k*span;',
+    '  return ((k%2)+2)%2===0 ? min+r : max-r; // pingPong mirror',
+    '}',
+    '',
+    '// LINE: one-way time T = |end-start| / speedMS',
+    'pos = lerp(start,end, phase01(t,T,loopMode));',
+    '// CIRCLE: theta (deg), dir = direction==="cw" ? 1 : -1',
+    'theta = angleAt(t, startAngleDeg, speedDegS, dir,',
+    '                arcMinDeg, arcMaxDeg, loopMode);',
+    'pos   = center + [radiusX*cos(theta*D2R), 0, radiusZ*sin(theta*D2R)];',
+    'pos.y = center[1];',
+    '// FIXED: same angleAt per axis with its own speed and bounds',
+    'yaw   = angleAt(t, yawDeg, |yawSpeedDegS|, sign(yawSpeedDegS),',
+    '                yawMinDeg, yawMaxDeg, loopMode);   // pitch likewise',
+    'pos   = position;',
+    '',
+    '// ORIENTATION: if lookMode is center|point -\u003e lookAt(pos, lookAt or center);',
+    '// if path -\u003e look along the travel direction; if fixed -\u003e YXZ Euler',
+    '// (pitch about X applied after yaw about Y; pitch positive = up).',
+    '// Camera: perspective, vertical fov = fovDeg, roll = 0, up = +Y.'
+  ].join('\n')) + '</pre>',
+  '<h3>Notes</h3>',
+  '<ul style="margin:4px 0;padding-left:20px">',
+  '<li>Coordinates are the glTF file\u2019s own world space — load the room with an identity transform and the numbers transfer 1:1.</li>',
+  '<li>Serve this page over http(s) (e.g. <code>python -m http.server</code>); ES modules do not run from file:// in most browsers. The three.js library loads from the jsDelivr CDN once per session.</li>',
+  '<li>The orange line + dot on the blue camera body is the direction pointer (it replaced the old cone): it shows where the track camera is looking without blocking the TRACK CAM preview, which now renders the room without editor overlays.</li>',
+  '<li><b>Smooth turns</b> — while playing, the track camera approaches its exact orientation at a bounded turn rate (SMOOTH toolbar button, deg/s field in the playbar, key S). Paused / scrubbed / exported views are always exact. camdat.json is unchanged: consumers can reproduce the same feel with a max-rate quaternion slerp toward the track orientation, snapping on seeks and track switches.</li>',
+  '<li>Autosave lives in the browser\u2019s localStorage — Export writes the portable <code>camdat.json</code>.</li>',
+  '<li>The consumer program only needs <code>file</code>, <code>type</code> and the parameter fields; everything else is metadata. The formulas above are the complete contract.</li>',
+  '</ul>'
+].join('');
+
+/* ================================================================== boot */
+window.__camtrack = {
+  ready: false,
+  version: APP_VERSION,
+  errors: [],
+  get doc() { return docToJSON(); },
+  get rawDoc() { return state.doc; },
+  get activeFile() { return state.activeFile; },
+  get loadedFiles() { return [...three.loaded.keys()]; },
+  get selection() { return state.selection; },
+  get playing() { return state.playing; },
+  get time() { return state.t; },
+  addTrack, selectTrack,
+  get turnInfo() {
+    return {
+      enabled: turn.enabled, rateDegS: turn.rateDegS,
+      quat: turn.quat ? turn.quat.toArray() : null, trackId: turn.trackId,
+      camBodyChildren: camBody ? camBody.children.map(c => c.type + ':' + (c.geometry ? c.geometry.type : '?')) : null
+    };
+  },
+  setTurn(enabled, rateDegS) {
+    if (enabled !== undefined) turn.enabled = !!enabled;
+    if (rateDegS !== undefined) turn.rateDegS = Math.min(720, Math.max(10, +rateDegS || 160));
+    $('#btn-smooth').classList.toggle('on', turn.enabled);
+    $('#turn-rate').value = turn.rateDegS;
+    saveSettings();
+  },
+  limiterStep(qa, qb, dt) {
+    const q = new THREE.Quaternion().fromArray(qa), target = new THREE.Quaternion().fromArray(qb);
+    turnStepLimited(q, target, dt);
+    return q.toArray();
+  },
+  stepTurn(dt) { const tr = playTarget() || selTrack(); if (!tr) return null; updateTrackCam(tr, dt); return turn.quat ? turn.quat.toArray() : null; },
+  seek(t) { state.t = Math.max(0, +t || 0); },   /* set playback time without snapping the turn filter */
+  project(p) {
+    const v = new THREE.Vector3(p[0], p[1], p[2]).project(orbitCam);
+    const r = renderer.domElement.getBoundingClientRect();
+    return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height, visible: v.z < 1 };
+  },
+  evaluate(id, t) {
+    for (const m of state.doc.models) {
+      const tr = m.tracks.find(x => x.id === id);
+      if (tr) return evalTrack(tr, t);
+    }
+    return null;
+  }
+};
+
+(async function boot() {
+  try {
+    await initThree();
+  } catch (e) {
+    $('#boot-msg').innerHTML = 'Could not start three.js: ' + esc((e && e.message) || e) +
+      '<br><span class="dim">check your internet connection (jsDelivr CDN) and reload — ' +
+      'this page also needs http(s), not file://</span>';
+    return;
+  }
+  pipCam.rotation.order = 'YXZ';
+  state.doc = blankDoc();
+  const restored = restoreAutosave();
+  loadSettings();
+  if (restored) {
+    markDirty();
+    $('#save-text').textContent = 'restored autosave';
+  } else {
+    $('#save-text').textContent = 'new document';
+  }
+  rebuildAll();
+  startRenderLoop();
+  $('#boot').classList.add('done');
+  window.__camtrack.ready = true;
+  if (restored) toast('Restored autosaved camdat (' + restored + ' model' + (restored > 1 ? 's' : '') + ') — load the glTF files to preview');
+  if (location.protocol === 'file:') toast('file:// detected — if the 3D view stays blank, serve this folder over http (e.g. python -m http.server)', 'warn');
+  window.addEventListener('error', e => window.__camtrack.errors.push(String(e.message || e)));
+})();
+</script>
+</body>
+</html>
