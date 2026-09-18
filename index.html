@@ -124,6 +124,20 @@ body {
 .mr-name { color: var(--head); font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mr-sub { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
 .mr-sub .ok { color: var(--green); }
+
+/* per-glTF flag rows — fogon / nighton / flashlighton (Models panel) */
+#fog-row, #night-row, #flash-row {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--border); border-radius: 7px;
+  padding: 7px 9px; margin-bottom: 6px;
+  background: var(--bg2); cursor: pointer; user-select: none;
+  font-size: 12px; color: var(--text);
+}
+#fog-row:hover, #night-row:hover, #flash-row:hover { border-color: var(--border2); }
+#fog-row input, #night-row input, #flash-row input { accent-color: var(--accent); flex: 0 0 auto; }
+#fog-row.disabled, #night-row.disabled, #flash-row.disabled { opacity: .45; pointer-events: none; }
+#fog-file, #night-file, #flash-file { flex: 1; min-width: 0; text-align: right; color: var(--text-dim); font-family: var(--mono); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .hint { color: var(--text-dim); font-size: 11.5px; padding: 6px 2px 8px; line-height: 1.5; }
 
 /* track add row */
@@ -352,6 +366,18 @@ select.sel { font-family: var(--sans); }
     <div class="panel">
       <div class="panel-title">Models <span id="models-count" style="letter-spacing:0"></span></div>
       <div id="models-list"></div>
+      <label id="fog-row" class="disabled" title="fogon — per-model boolean stored in camdat.json (for the consuming program, e.g. fog rendering). Applies to the active glTF entry; persistent, unlike the temporary Pointer mode.">
+        <input type="checkbox" id="fog-check">
+        <span>Fog on</span><span id="fog-file">no model</span>
+      </label>
+      <label id="night-row" class="disabled" title="nighton — per-model boolean stored in camdat.json (for the consuming program, e.g. night-mode lighting for that room). Applies to the active glTF entry; persistent, unlike the temporary Pointer mode.">
+        <input type="checkbox" id="night-check">
+        <span>Night on</span><span id="night-file">no model</span>
+      </label>
+      <label id="flash-row" class="disabled" title="flashlighton — per-model boolean stored in camdat.json (for the consuming program, e.g. a flashlight attached to the camera in that room). Applies to the active glTF entry; persistent, unlike the temporary Pointer mode.">
+        <input type="checkbox" id="flash-check">
+        <span>Flashlight on</span><span id="flash-file">no model</span>
+      </label>
       <div class="hint" id="models-hint">Load a .glb / .gltf room to begin. Every loaded glTF is added to camdat.json together with its camera tracks.</div>
     </div>
 
@@ -362,9 +388,13 @@ select.sel { font-family: var(--sans); }
         <button class="btn" id="btn-add-circle" title="Circle / oval orbit">+ Circle</button>
         <button class="btn" id="btn-add-fixed" title="Fixed position, rotating view">+ Fixed</button>
         <button class="btn" id="btn-add-curve" title="Curved path — PowerPoint-style anchor points">+ Curve</button>
+        <button class="btn" id="btn-add-polyline" title="Line with multiple turns — corridor-style navigation through the whole map">+ Polyline</button>
+        <button class="btn" id="btn-add-spiral" title="Spiral in or out around a center while changing height — dramatic reveal">+ Spiral</button>
+        <button class="btn" id="btn-add-zigzag" title="Auto lawnmower sweep across a rectangle — full map coverage">+ Zigzag</button>
+        <button class="btn" id="btn-add-fig8" title="Figure-8 (lemniscate) loop around the center">+ Fig 8</button>
       </div>
       <div id="track-list"></div>
-      <div class="hint" id="tracks-hint">Lines, circles/ovals, curves or fixed + rotating cameras. Drag the handles (Shift-drag or the cyan Y handle = height; X/Y/Z = axis lock); numbers below.</div>
+      <div class="hint" id="tracks-hint">Lines, multi-turn polylines, circles, spirals, zigzag sweeps, figure-8s, curves or fixed cameras. Drag the handles (Shift-drag or the cyan Y handle = height; X/Y/Z = axis lock); numbers below.</div>
     </div>
 
     <div class="panel">
@@ -439,9 +469,14 @@ const DOC_STRING =
   'circle: theta deg, pos(t)=center+[radiusX*cos(theta),0,radiusZ*sin(theta)], y=center[1]. ' +
   'fixed: pos=position, yaw/pitch advance by *SpeedDegS with optional *MinDeg/*MaxDeg boundaries. ' +
   'curve: uniform Catmull-Rom spline through points[] (end tangents duplicated by clamping); a fixed 64-samples-per-segment chord table plus a monotone cubic Hermite (Fritsch-Carlson) refinement maps traveled distance to the spline parameter, pos(t) is the exact spline point (C1-smooth) at constant speedMS; lookMode path uses the analytic spline derivative. ' +
+  'polyline: a line with multiple turns — straight segments through points[] at constant speedMS; arc length is the exact segment-length sum, pos(t) lerps inside the segment reached by traveled distance, lookMode path uses the (piecewise-constant) segment direction. ' +
+  'spiral: f=phase01(t,turns*360/speedDegS,loopMode), theta=startAngleDeg+dir*turns*360*f with dir=+1 for cw and -1 for ccw, r=radiusStart+(radiusEnd-radiusStart)*f, y=center[1]+yStart+(yEnd-yStart)*f, pos(t)=center+[r*cos(theta),y-center[1],r*sin(theta)] — radius and height interpolate over the sweep (a circle when radiusStart=radiusEnd and yStart=yEnd). ' +
+  'zigzag: lawnmower sweep — lanes passes across a sizeX by sizeZ rectangle centered at center, waypoints at x=center[0]+/-sizeX/2 alternating direction while z advances sizeZ/(lanes-1) per pass, joined by straight segments at constant speedMS (same segment walk as polyline). ' +
+  'figure8: theta deg advances like circle over one full 360 deg period (angleAt with bounds startAngleDeg..startAngleDeg+/-360), pos(t)=center+[semiX*sin(theta),0,semiZ*sin(2*theta)], y=center[1] (Gerono lemniscate; closes every 360 deg). ' +
   'loopMode: loop wraps, pingPong mirrors at ends, once stops at end. ' +
   'Orientation: lookAt point when lookMode is center|point|path; lookMode "normal" looks along N=normalize(cross(T,up)) with T the travel tangent (reversed on the pingPong return leg, same rule as path) and up=+Y, so N is horizontal and perpendicular to T (T parallel to up falls back to cross(T,+Z), then cross(T,+X)); normalDirection "forward"|"backward" selects +N|-N; else fixed yaw/pitch (YXZ Euler, +Y up, pitch positive = up). ' +
   'Units: meters / degrees / seconds. Coordinates are the glTF file own world space (identity transform). ' +
+  'Per-model flags: fogon, nighton, flashlighton (booleans, default false) ride with each models[] entry for the consuming program (e.g. enabling its fog / night lighting / camera flashlight for that room). ' +
   'durationSec is informational (one playback cycle).';
 
 /* ------------------------------------------------------------------ utils */
@@ -611,6 +646,66 @@ function makeTrack(type) {
     t.lookAt = [r4(c[0]), y, r4(c[2])];
     t.yawDeg = 0; t.pitchDeg = 0;
     t.name = nextName('Curve');
+  } else if (type === 'polyline') {
+    /* U-shaped default: two right-angle turns — the multi-turn idea in one glance */
+    const dx = Math.max(s[0] * 0.3, 0.5);
+    const dz = Math.max(s[2] * 0.35, 0.5);
+    t.points = [
+      [r4(c[0] - dx), y, r4(c[2] - dz)],
+      [r4(c[0]), y, r4(c[2] - dz)],
+      [r4(c[0]), y, r4(c[2] + dz)],
+      [r4(c[0] + dx), y, r4(c[2] + dz)]
+    ];
+    let L0 = 0;
+    for (let i = 0; i < t.points.length - 1; i++) L0 += dist3(t.points[i], t.points[i + 1]);
+    t.speedMS = r4(Math.max(L0 / 14, 0.05));
+    t.loopMode = 'pingPong';
+    t.lookMode = 'path';
+    t.normalDirection = 'forward';
+    t.lookAt = [r4(c[0]), y, r4(c[2])];
+    t.yawDeg = 0; t.pitchDeg = 0;
+    t.name = nextName('Polyline');
+  } else if (type === 'spiral') {
+    t.center = [r4(c[0]), y, r4(c[2])];
+    t.radiusStart = r4(Math.max(Math.min(s[0], s[2]) * 0.42, 0.3));
+    t.radiusEnd = r4(Math.max(Math.min(s[0], s[2]) * 0.15, 0.1));
+    t.yStart = 0;
+    t.yEnd = r4(Math.max(s[1] * 0.12, 0));       /* gentle rise while spiraling in */
+    t.startAngleDeg = 0;
+    t.direction = 'cw';
+    t.turns = 1.25;
+    t.speedDegS = 18;
+    t.loopMode = 'pingPong';
+    t.lookMode = 'center';
+    t.normalDirection = 'forward';
+    t.lookAt = t.center.slice();
+    t.yawDeg = 0; t.pitchDeg = 0;
+    t.name = nextName('Spiral');
+  } else if (type === 'zigzag') {
+    t.center = [r4(c[0]), y, r4(c[2])];
+    t.sizeX = r4(Math.max(s[0] * 0.8, 0.6));
+    t.sizeZ = r4(Math.max(s[2] * 0.7, 0.4));
+    t.lanes = 3;
+    t.speedMS = r4(Math.max((t.sizeX * 3 + t.sizeZ) / 14, 0.05));   /* rough default path length / 14 s */
+    t.loopMode = 'pingPong';
+    t.lookMode = 'path';
+    t.normalDirection = 'forward';
+    t.lookAt = [r4(c[0]), y, r4(c[2])];
+    t.yawDeg = 0; t.pitchDeg = 0;
+    t.name = nextName('Zigzag');
+  } else if (type === 'figure8') {
+    t.center = [r4(c[0]), y, r4(c[2])];
+    t.semiX = r4(Math.max(s[0] * 0.38, 0.3));
+    t.semiZ = r4(Math.max(s[2] * 0.3, 0.2));
+    t.startAngleDeg = 0;
+    t.direction = 'cw';
+    t.speedDegS = 15;
+    t.loopMode = 'loop';
+    t.lookMode = 'center';
+    t.normalDirection = 'forward';
+    t.lookAt = t.center.slice();
+    t.yawDeg = 0; t.pitchDeg = 0;
+    t.name = nextName('Figure 8');
   } else {
     t.position = [r4(c[0] + Math.max(s[0] * 0.25, 0.4)), y, r4(c[2])];
     const d = [c[0] - t.position[0], 0, c[2] - t.position[2]];
@@ -778,6 +873,88 @@ function curveTangentAt(lut, d) {
   return normSafe(t);
 }
 
+/* ============================================== polyline / zigzag math
+   A polyline is a line with multiple turns: straight segments joining the
+   anchor points (waypoints) at constant speedMS. Arc length is EXACT here
+   (sum of segment lengths) — no chord table needed: binary-search the
+   cumulative lengths, walk into the segment, lerp. lookMode 'path' uses the
+   exact segment direction (piecewise constant — corners are true corners);
+   the editor's smooth-turn rate limiter rounds them naturally in preview,
+   and consumers can do the same (documented). zigzag reuses the same walk
+   over an auto-generated waypoint list (pure function of its parameters).
+   All pure functions — bit-reproducible in any consumer (see Help).   */
+function pointsLUT(P) {
+  /* cumulative chord lengths over a waypoint array — exact for straight segments */
+  const cum = [0];
+  let total = 0;
+  for (let i = 0; i < P.length - 1; i++) { total += dist3(P[i], P[i + 1]); cum.push(total); }
+  return { P, n: P.length, cum, total };
+}
+const polyCache = new WeakMap();      /* tr -> {sig, lut}: editor-side memo of a pure function */
+function polylineLUT(tr) {
+  const sig = tr.points.map(p => p.join(',')).join(';');
+  const hit = polyCache.get(tr);
+  if (hit && hit.sig === sig) return hit.lut;
+  const lut = pointsLUT(tr.points);
+  polyCache.set(tr, { sig, lut });
+  return lut;
+}
+/* distance -> {seg, f}: binary-search cum[], then the linear fraction inside
+   the segment (constant speed is exact by construction — no refinement)   */
+function polyParamAt(lut, d) {
+  const { cum } = lut;
+  d = clamp(d, 0, lut.total);
+  let lo = 0, hi = cum.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= d) lo = mid; else hi = mid; }
+  const span = cum[hi] - cum[lo];
+  const f = span > 1e-12 ? (d - cum[lo]) / span : 0;
+  return { seg: lo, f };
+}
+function polyPosAt(lut, d) {
+  const { P } = lut;
+  const { seg, f } = polyParamAt(lut, d);
+  return lerp3(P[seg], P[seg + 1], f);
+}
+function polyTangentAt(lut, d) {
+  const { P, n } = lut;
+  const { seg } = polyParamAt(lut, d);
+  for (let i = seg; i < n - 1; i++) {          /* skip zero-length segments forward, */
+    const t = sub3(P[i + 1], P[i]);            /* then backward (degenerate anchors) */
+    if (Math.hypot(t[0], t[1], t[2]) > 1e-9) return normSafe(t);
+  }
+  for (let i = seg - 1; i >= 0; i--) {
+    const t = sub3(P[i + 1], P[i]);
+    if (Math.hypot(t[0], t[1], t[2]) > 1e-9) return normSafe(t);
+  }
+  return [0, 0, -1];
+}
+/* zigzag waypoints (lawnmower / boustrophedon sweep over a sizeX x sizeZ
+   rectangle centered at center): lanes passes along X, alternating direction,
+   advancing sizeZ/(lanes-1) in Z between passes. Pure function of params. */
+function zigzagPoints(tr) {
+  const c = tr.center, w = Math.max(tr.sizeX, 0.01), d = Math.max(tr.sizeZ, 0.01);
+  const lanes = Math.max(2, Math.round(tr.lanes));
+  const dz = d / (lanes - 1);
+  const pts = [];
+  let side = -1;                                   /* first pass runs -X -> +X */
+  for (let i = 0; i < lanes; i++) {
+    const z = c[2] - d / 2 + i * dz;
+    pts.push([c[0] + side * w / 2, c[1], z]);
+    side = -side;
+    pts.push([c[0] + side * w / 2, c[1], z]);
+  }
+  return pts;
+}
+const zigCache = new WeakMap();       /* tr -> {sig, lut} memo, same pattern as polyCache */
+function zigzagLUT(tr) {
+  const sig = tr.center.join(',') + '|' + tr.sizeX + '|' + tr.sizeZ + '|' + tr.lanes;
+  const hit = zigCache.get(tr);
+  if (hit && hit.sig === sig) return hit.lut;
+  const lut = pointsLUT(zigzagPoints(tr));
+  zigCache.set(tr, { sig, lut });
+  return lut;
+}
+
 /* lookMode "normal": a look direction perpendicular to the travel tangent T.
    Convention (part of the camdat contract): N = normalize(cross(T, up))
    with up = world +Y — the right-hand-rule side normal. By construction N
@@ -853,6 +1030,87 @@ function evalTrack(tr, time) {
       lookAt = add3(pos, normalFromTangent(tanT, tr.normalDirection === 'backward'));
     } else if (tr.lookMode === 'point') lookAt = tr.lookAt.slice();
     else { yaw = tr.yawDeg; pitch = tr.pitchDeg; }
+  } else if (tr.type === 'polyline') {
+    const lut = polylineLUT(tr);
+    const T = lut.total / Math.max(tr.speedMS, 1e-6);
+    const s = phase01(time, T, tr.loopMode);
+    const d = s * lut.total;
+    pos = polyPosAt(lut, d);
+    if (tr.lookMode === 'path' || tr.lookMode === 'normal') {
+      const u = T > 0 ? time / T : 0;
+      const returning = tr.loopMode === 'pingPong' && (((u % 2) + 2) % 2) >= 1;
+      const tan = polyTangentAt(lut, d);
+      const tanT = returning ? [-tan[0], -tan[1], -tan[2]] : tan;
+      if (tr.lookMode === 'path') lookAt = add3(pos, tanT);
+      else lookAt = add3(pos, normalFromTangent(tanT, tr.normalDirection === 'backward'));
+    } else if (tr.lookMode === 'point') lookAt = tr.lookAt.slice();
+    else { yaw = tr.yawDeg; pitch = tr.pitchDeg; }
+  } else if (tr.type === 'spiral') {
+    const dir = tr.direction === 'ccw' ? -1 : 1;
+    const sweep = Math.abs(tr.turns) * 360;
+    const T = sweep / Math.max(tr.speedDegS, 1e-6);
+    const f = phase01(time, T, tr.loopMode);
+    const th = (tr.startAngleDeg + dir * sweep * f) * DEG;
+    const r = tr.radiusStart + (tr.radiusEnd - tr.radiusStart) * f;
+    pos = [tr.center[0] + r * Math.cos(th),
+           tr.center[1] + tr.yStart + (tr.yEnd - tr.yStart) * f,
+           tr.center[2] + r * Math.sin(th)];
+    if (tr.lookMode === 'center') lookAt = tr.center.slice();
+    else if (tr.lookMode === 'point') lookAt = tr.lookAt.slice();
+    else if (tr.lookMode === 'path' || tr.lookMode === 'normal') {
+      const u = T > 0 ? time / T : 0;
+      const returning = tr.loopMode === 'pingPong' && (((u % 2) + 2) % 2) >= 1;
+      /* analytic d(pos)/df — the exact spiral tangent: dth per unit f, dr and dy
+         are the (constant) interpolation rates                                    */
+      const dth = dir * sweep * DEG, dr = tr.radiusEnd - tr.radiusStart, dy = tr.yEnd - tr.yStart;
+      let t = normSafe([dr * Math.cos(th) - r * Math.sin(th) * dth, dy,
+                        dr * Math.sin(th) + r * Math.cos(th) * dth]);
+      if (returning) t = [-t[0], -t[1], -t[2]];
+      if (tr.lookMode === 'path') lookAt = add3(pos, t);
+      else lookAt = add3(pos, normalFromTangent(t, tr.normalDirection === 'backward'));
+    } else { yaw = tr.yawDeg; pitch = tr.pitchDeg; }
+  } else if (tr.type === 'zigzag') {
+    const lut = zigzagLUT(tr);
+    const T = lut.total / Math.max(tr.speedMS, 1e-6);
+    const s = phase01(time, T, tr.loopMode);
+    const d = s * lut.total;
+    pos = polyPosAt(lut, d);
+    if (tr.lookMode === 'center') lookAt = tr.center.slice();
+    else if (tr.lookMode === 'point') lookAt = tr.lookAt.slice();
+    else if (tr.lookMode === 'path' || tr.lookMode === 'normal') {
+      const u = T > 0 ? time / T : 0;
+      const returning = tr.loopMode === 'pingPong' && (((u % 2) + 2) % 2) >= 1;
+      const tan = polyTangentAt(lut, d);
+      const tanT = returning ? [-tan[0], -tan[1], -tan[2]] : tan;
+      if (tr.lookMode === 'path') lookAt = add3(pos, tanT);
+      else lookAt = add3(pos, normalFromTangent(tanT, tr.normalDirection === 'backward'));
+    } else { yaw = tr.yawDeg; pitch = tr.pitchDeg; }
+  } else if (tr.type === 'figure8') {
+    const dir = tr.direction === 'ccw' ? -1 : 1;
+    /* bound the sweep to exactly one full 360 deg period so loopMode is
+       meaningful: loop wraps seamlessly (closed curve), pingPong travels the
+       8 forward then backward, once stops after a single period            */
+    const aMin = dir > 0 ? tr.startAngleDeg : tr.startAngleDeg - 360;
+    const aMax = dir > 0 ? tr.startAngleDeg + 360 : tr.startAngleDeg;
+    const th = angleAt(time, tr.startAngleDeg, Math.abs(tr.speedDegS) || 0, dir, aMin, aMax, tr.loopMode);
+    const rad = th * DEG;
+    pos = [tr.center[0] + tr.semiX * Math.sin(rad), tr.center[1],
+           tr.center[2] + tr.semiZ * Math.sin(2 * rad)];
+    if (tr.lookMode === 'center') lookAt = tr.center.slice();
+    else if (tr.lookMode === 'point') lookAt = tr.lookAt.slice();
+    else if (tr.lookMode === 'path' || tr.lookMode === 'normal') {
+      const T = 360 / Math.max(tr.speedDegS, 1e-6);
+      const u = T > 0 ? time / T : 0;
+      const returning = tr.loopMode === 'pingPong' && (((u % 2) + 2) % 2) >= 1;
+      /* analytic tangent of pos(theta): d/dtheta [semiX*sin, 0, semiZ*sin(2th)];
+         travel direction = dir * dpos/dtheta (reversed on the pingPong return) */
+      const tx = tr.semiX * Math.cos(rad), tz = 2 * tr.semiZ * Math.cos(2 * rad);
+      const L = Math.hypot(tx, tz) || 1;
+      let tan = [dir * tx / L, 0, dir * tz / L];
+      if (returning) tan = [-tan[0], -tan[1], -tan[2]];
+      if (tr.lookMode === 'path') lookAt = add3(pos, tan);
+      else lookAt = add3(pos, normalFromTangent(tan, tr.normalDirection === 'backward'));
+    } else { yaw = tr.yawDeg; pitch = tr.pitchDeg; }
   } else {
     pos = tr.position.slice();
     const yb = tr.yawBounds && tr.yawMaxDeg > tr.yawMinDeg;
@@ -882,6 +1140,22 @@ function cycleDuration(tr) {
   if (tr.type === 'curve') {
     const L = curveLUT(tr).total;
     const T = L / Math.max(tr.speedMS, 1e-6);
+    return tr.loopMode === 'pingPong' ? T * 2 : T;
+  }
+  if (tr.type === 'polyline') {
+    const T = polylineLUT(tr).total / Math.max(tr.speedMS, 1e-6);
+    return tr.loopMode === 'pingPong' ? T * 2 : T;
+  }
+  if (tr.type === 'zigzag') {
+    const T = zigzagLUT(tr).total / Math.max(tr.speedMS, 1e-6);
+    return tr.loopMode === 'pingPong' ? T * 2 : T;
+  }
+  if (tr.type === 'spiral') {
+    const T = Math.abs(tr.turns) * 360 / Math.max(tr.speedDegS, 1e-6);
+    return tr.loopMode === 'pingPong' ? T * 2 : T;
+  }
+  if (tr.type === 'figure8') {
+    const T = 360 / Math.max(tr.speedDegS, 1e-6);
     return tr.loopMode === 'pingPong' ? T * 2 : T;
   }
   let T = 0;
@@ -922,6 +1196,37 @@ function trackToJSON(tr) {
     if (tr.lookMode === 'normal') o.normalDirection = tr.normalDirection === 'backward' ? 'backward' : 'forward';
     if (tr.lookMode === 'point') o.lookAt = v3j(tr.lookAt);
     if (tr.lookMode === 'fixed') { o.yawDeg = r4(tr.yawDeg); o.pitchDeg = r4(tr.pitchDeg); }
+  } else if (tr.type === 'polyline') {
+    o.points = tr.points.map(v3j);
+    o.speedMS = r4(tr.speedMS);
+    o.lookMode = tr.lookMode;
+    if (tr.lookMode === 'normal') o.normalDirection = tr.normalDirection === 'backward' ? 'backward' : 'forward';
+    if (tr.lookMode === 'point') o.lookAt = v3j(tr.lookAt);
+    if (tr.lookMode === 'fixed') { o.yawDeg = r4(tr.yawDeg); o.pitchDeg = r4(tr.pitchDeg); }
+  } else if (tr.type === 'spiral') {
+    o.center = v3j(tr.center); o.radiusStart = r4(tr.radiusStart); o.radiusEnd = r4(tr.radiusEnd);
+    o.yStart = r4(tr.yStart); o.yEnd = r4(tr.yEnd);
+    o.startAngleDeg = r4(tr.startAngleDeg); o.direction = tr.direction;
+    o.turns = r4(Math.abs(tr.turns)); o.speedDegS = r4(tr.speedDegS);
+    o.lookMode = tr.lookMode;
+    if (tr.lookMode === 'normal') o.normalDirection = tr.normalDirection === 'backward' ? 'backward' : 'forward';
+    if (tr.lookMode === 'point') o.lookAt = v3j(tr.lookAt);
+    if (tr.lookMode === 'fixed') { o.yawDeg = r4(tr.yawDeg); o.pitchDeg = r4(tr.pitchDeg); }
+  } else if (tr.type === 'zigzag') {
+    o.center = v3j(tr.center); o.sizeX = r4(tr.sizeX); o.sizeZ = r4(tr.sizeZ);
+    o.lanes = Math.round(tr.lanes);
+    o.speedMS = r4(tr.speedMS);
+    o.lookMode = tr.lookMode;
+    if (tr.lookMode === 'normal') o.normalDirection = tr.normalDirection === 'backward' ? 'backward' : 'forward';
+    if (tr.lookMode === 'point') o.lookAt = v3j(tr.lookAt);
+    if (tr.lookMode === 'fixed') { o.yawDeg = r4(tr.yawDeg); o.pitchDeg = r4(tr.pitchDeg); }
+  } else if (tr.type === 'figure8') {
+    o.center = v3j(tr.center); o.semiX = r4(tr.semiX); o.semiZ = r4(tr.semiZ);
+    o.startAngleDeg = r4(tr.startAngleDeg); o.direction = tr.direction; o.speedDegS = r4(tr.speedDegS);
+    o.lookMode = tr.lookMode;
+    if (tr.lookMode === 'normal') o.normalDirection = tr.normalDirection === 'backward' ? 'backward' : 'forward';
+    if (tr.lookMode === 'point') o.lookAt = v3j(tr.lookAt);
+    if (tr.lookMode === 'fixed') { o.yawDeg = r4(tr.yawDeg); o.pitchDeg = r4(tr.pitchDeg); }
   } else {
     o.position = v3j(tr.position);
     o.yawDeg = r4(tr.yawDeg); o.pitchDeg = r4(tr.pitchDeg);
@@ -943,6 +1248,9 @@ function docToJSON() {
       file: m.file,
       addedAt: m.addedAt || null,
       bounds: m.bounds || null,
+      fogon: m.fogon === true,
+      nighton: m.nighton === true,
+      flashlighton: m.flashlighton === true,
       tracks: m.tracks.map(trackToJSON)
     }))
   };
@@ -956,13 +1264,14 @@ function vec3(v, def) {
 function pick(v, list, def) { return list.includes(v) ? v : def; }
 function sanitizeTrack(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  const type = pick(raw.type, ['line', 'circle', 'curve', 'fixed'], null);
+  const type = pick(raw.type, ['line', 'circle', 'curve', 'polyline', 'spiral', 'zigzag', 'figure8', 'fixed'], null);
   if (!type) return null;
   const tr = { id: typeof raw.id === 'string' && raw.id ? raw.id : newId(), type };
   tr.name = typeof raw.name === 'string' ? raw.name.slice(0, 60) : '';
   tr.enabled = raw.enabled !== false;
   tr.fovDeg = clamp(num(raw.fovDeg, 60), 5, 140);
-  tr.loopMode = pick(raw.loopMode, ['loop', 'pingPong', 'once'], type === 'line' ? 'pingPong' : 'loop');
+  tr.loopMode = pick(raw.loopMode, ['loop', 'pingPong', 'once'],
+    (type === 'line' || type === 'polyline' || type === 'spiral' || type === 'zigzag') ? 'pingPong' : 'loop');
   if (type === 'line') {
     tr.start = vec3(raw.start, [0, 1, 0]);
     tr.end = vec3(raw.end, [1, 1, 0]);
@@ -997,6 +1306,53 @@ function sanitizeTrack(raw) {
     tr.normalDirection = pick(raw.normalDirection, ['forward', 'backward'], 'forward');
     tr.lookAt = vec3(raw.lookAt, [0, 1, 0]);
     tr.yawDeg = num(raw.yawDeg, 0); tr.pitchDeg = num(raw.pitchDeg, 0);
+  } else if (type === 'polyline') {
+    const pts = [];
+    if (Array.isArray(raw.points)) for (const p of raw.points) {
+      const v = vec3(p, null);
+      if (v) pts.push(v);
+    }
+    if (pts.length < 2) return null;             /* a polyline needs at least 2 waypoints */
+    tr.points = pts.slice(0, 64);
+    tr.speedMS = Math.max(num(raw.speedMS, 1), 0.001);
+    tr.lookMode = pick(raw.lookMode, ['path', 'point', 'fixed', 'normal'], 'path');
+    tr.normalDirection = pick(raw.normalDirection, ['forward', 'backward'], 'forward');
+    tr.lookAt = vec3(raw.lookAt, [0, 1, 0]);
+    tr.yawDeg = num(raw.yawDeg, 0); tr.pitchDeg = num(raw.pitchDeg, 0);
+  } else if (type === 'spiral') {
+    tr.center = vec3(raw.center, [0, 1, 0]);
+    tr.radiusStart = Math.max(num(raw.radiusStart, 2.5), 0.02);
+    tr.radiusEnd = Math.max(num(raw.radiusEnd, 1), 0.02);
+    tr.yStart = num(raw.yStart, 0); tr.yEnd = num(raw.yEnd, 0);
+    tr.startAngleDeg = num(raw.startAngleDeg, 0);
+    tr.direction = pick(raw.direction, ['cw', 'ccw'], 'cw');
+    tr.turns = clamp(num(raw.turns, 1.25), 0.05, 20);
+    tr.speedDegS = Math.max(num(raw.speedDegS, 15), 0.001);
+    tr.lookMode = pick(raw.lookMode, ['center', 'point', 'path', 'fixed', 'normal'], 'center');
+    tr.normalDirection = pick(raw.normalDirection, ['forward', 'backward'], 'forward');
+    tr.lookAt = vec3(raw.lookAt, tr.center.slice());
+    tr.yawDeg = num(raw.yawDeg, 0); tr.pitchDeg = num(raw.pitchDeg, 0);
+  } else if (type === 'zigzag') {
+    tr.center = vec3(raw.center, [0, 1, 0]);
+    tr.sizeX = Math.max(num(raw.sizeX, 4), 0.05);
+    tr.sizeZ = Math.max(num(raw.sizeZ, 3), 0.05);
+    tr.lanes = clamp(Math.round(num(raw.lanes, 3)) || 2, 2, 64);
+    tr.speedMS = Math.max(num(raw.speedMS, 1), 0.001);
+    tr.lookMode = pick(raw.lookMode, ['path', 'center', 'point', 'fixed', 'normal'], 'path');
+    tr.normalDirection = pick(raw.normalDirection, ['forward', 'backward'], 'forward');
+    tr.lookAt = vec3(raw.lookAt, [0, 1, 0]);
+    tr.yawDeg = num(raw.yawDeg, 0); tr.pitchDeg = num(raw.pitchDeg, 0);
+  } else if (type === 'figure8') {
+    tr.center = vec3(raw.center, [0, 1, 0]);
+    tr.semiX = Math.max(num(raw.semiX, 2), 0.02);
+    tr.semiZ = Math.max(num(raw.semiZ, 1.5), 0.02);
+    tr.startAngleDeg = num(raw.startAngleDeg, 0);
+    tr.direction = pick(raw.direction, ['cw', 'ccw'], 'cw');
+    tr.speedDegS = Math.max(num(raw.speedDegS, 12), 0.001);
+    tr.lookMode = pick(raw.lookMode, ['center', 'point', 'path', 'fixed', 'normal'], 'center');
+    tr.normalDirection = pick(raw.normalDirection, ['forward', 'backward'], 'forward');
+    tr.lookAt = vec3(raw.lookAt, tr.center.slice());
+    tr.yawDeg = num(raw.yawDeg, 0); tr.pitchDeg = num(raw.pitchDeg, 0);
   } else {
     tr.position = vec3(raw.position, [0, 1, 0]);
     tr.yawDeg = num(raw.yawDeg, 0); tr.pitchDeg = num(raw.pitchDeg, 0);
@@ -1015,7 +1371,7 @@ function sanitizeDoc(raw) {
   if (raw && typeof raw === 'object' && Array.isArray(raw.models)) {
     for (const m of raw.models) {
       if (!m || typeof m.file !== 'string' || !m.file) continue;
-      const entry = { file: m.file, addedAt: typeof m.addedAt === 'string' ? m.addedAt : new Date().toISOString(), bounds: null, tracks: [] };
+      const entry = { file: m.file, addedAt: typeof m.addedAt === 'string' ? m.addedAt : new Date().toISOString(), bounds: null, tracks: [], fogon: m.fogon === true, nighton: m.nighton === true, flashlighton: m.flashlighton === true };
       if (m.bounds && Array.isArray(m.bounds.min) && Array.isArray(m.bounds.max)) {
         entry.bounds = { min: vec3(m.bounds.min, [0, 0, 0]), max: vec3(m.bounds.max, [0, 0, 0]) };
       }
@@ -1430,7 +1786,7 @@ function registerModel(name, gltf) {
 
   let entry = state.doc.models.find(m => m.file === name);
   if (!entry) {
-    entry = { file: name, addedAt: new Date().toISOString(), bounds: null, tracks: [] };
+    entry = { file: name, addedAt: new Date().toISOString(), bounds: null, tracks: [], fogon: false, nighton: false, flashlighton: false };
     state.doc.models.push(entry);
     toast(name + ' added to the camdat document');
   } else if (entry.bounds) {
@@ -1509,6 +1865,29 @@ function makePathGeometry(tr) {
   } else if (tr.type === 'curve') {
     const lut = curveLUT(tr);
     for (const p of lut.samples) pts.push(new THREE.Vector3(p[0], p[1], p[2]));
+  } else if (tr.type === 'polyline') {
+    for (const p of tr.points) pts.push(new THREE.Vector3(p[0], p[1], p[2]));
+  } else if (tr.type === 'spiral') {
+    const dir = tr.direction === 'ccw' ? -1 : 1;
+    const sweep = Math.abs(tr.turns) * 360;
+    const N = 256;
+    for (let i = 0; i <= N; i++) {
+      const f = i / N;
+      const th = (tr.startAngleDeg + dir * sweep * f) * DEG;
+      const r = tr.radiusStart + (tr.radiusEnd - tr.radiusStart) * f;
+      const y = tr.center[1] + tr.yStart + (tr.yEnd - tr.yStart) * f;
+      pts.push(new THREE.Vector3(tr.center[0] + r * Math.cos(th), y, tr.center[2] + r * Math.sin(th)));
+    }
+  } else if (tr.type === 'zigzag') {
+    for (const p of zigzagPoints(tr)) pts.push(new THREE.Vector3(p[0], p[1], p[2]));
+  } else if (tr.type === 'figure8') {
+    const N = 256;
+    for (let i = 0; i <= N; i++) {
+      const rad = i / N * Math.PI * 2;
+      pts.push(new THREE.Vector3(
+        tr.center[0] + tr.semiX * Math.sin(rad), tr.center[1],
+        tr.center[2] + tr.semiZ * Math.sin(2 * rad)));
+    }
   } else {
     // fixed: yaw-boundary wedge (rotation boundaries visualised)
     const r = activeModelInfo().diag * 0.05;
@@ -1591,11 +1970,28 @@ function buildHandles(tr, handles, color) {
     mkPoint('center', tr.center, color);
     mk('rx', [tr.center[0] + tr.radiusX, tr.center[1], tr.center[2]], '#ffb454');
     mk('rz', [tr.center[0], tr.center[1], tr.center[2] + tr.radiusZ], '#9575cd');
-  } else if (tr.type === 'curve') {
+  } else if (tr.type === 'curve' || tr.type === 'polyline') {
     tr.points.forEach((p, i) => {
       const col = i === 0 ? '#7fd18a' : (i === tr.points.length - 1 ? '#e57373' : color);
       mkPoint('p' + i, p, col);
     });
+  } else if (tr.type === 'spiral') {
+    /* center moves the whole spiral; r0/r1 set start/end radius (horizontal
+       drag) or the start/end height offset above/below center (Shift-drag).
+       They sit on +/-X at their own heights so the two radii never collide. */
+    mkPoint('center', tr.center, color);
+    mk('r0', [tr.center[0] + tr.radiusStart, tr.center[1] + tr.yStart, tr.center[2]], '#ffb454');
+    mk('r1', [tr.center[0] - tr.radiusEnd, tr.center[1] + tr.yEnd, tr.center[2]], '#9575cd');
+  } else if (tr.type === 'zigzag') {
+    /* center moves the sweep rectangle; sx/sz stretch it along X / Z (like circle radii) */
+    mkPoint('center', tr.center, color);
+    mk('sx', [tr.center[0] + tr.sizeX / 2, tr.center[1], tr.center[2]], '#ffb454');
+    mk('sz', [tr.center[0], tr.center[1], tr.center[2] + tr.sizeZ / 2], '#9575cd');
+  } else if (tr.type === 'figure8') {
+    /* center moves the whole 8; fx/fz stretch the lobes along X / Z */
+    mkPoint('center', tr.center, color);
+    mk('fx', [tr.center[0] + tr.semiX, tr.center[1], tr.center[2]], '#ffb454');
+    mk('fz', [tr.center[0], tr.center[1], tr.center[2] + tr.semiZ], '#9575cd');
   } else {
     mkPoint('pos', tr.position, color);
     mk('yaw', yawHandlePos(tr), '#ffb454');
@@ -1613,6 +2009,12 @@ function updateTrackVisual(tr) {
     if (role === 'rx') { if (m.isMesh) { m.scale.setScalar(R); m.userData.baseScale = R; } m.position.set(tr.center[0] + tr.radiusX, tr.center[1], tr.center[2]); continue; }
     if (role === 'rz') { if (m.isMesh) { m.scale.setScalar(R); m.userData.baseScale = R; } m.position.set(tr.center[0], tr.center[1], tr.center[2] + tr.radiusZ); continue; }
     if (role === 'yaw') { if (m.isMesh) { m.scale.setScalar(R); m.userData.baseScale = R; } m.position.set(...yawHandlePos(tr)); continue; }
+    if (role === 'r0') { if (m.isMesh) { m.scale.setScalar(R); m.userData.baseScale = R; } m.position.set(tr.center[0] + tr.radiusStart, tr.center[1] + tr.yStart, tr.center[2]); continue; }
+    if (role === 'r1') { if (m.isMesh) { m.scale.setScalar(R); m.userData.baseScale = R; } m.position.set(tr.center[0] - tr.radiusEnd, tr.center[1] + tr.yEnd, tr.center[2]); continue; }
+    if (role === 'sx') { if (m.isMesh) { m.scale.setScalar(R); m.userData.baseScale = R; } m.position.set(tr.center[0] + tr.sizeX / 2, tr.center[1], tr.center[2]); continue; }
+    if (role === 'sz') { if (m.isMesh) { m.scale.setScalar(R); m.userData.baseScale = R; } m.position.set(tr.center[0], tr.center[1], tr.center[2] + tr.sizeZ / 2); continue; }
+    if (role === 'fx') { if (m.isMesh) { m.scale.setScalar(R); m.userData.baseScale = R; } m.position.set(tr.center[0] + tr.semiX, tr.center[1], tr.center[2]); continue; }
+    if (role === 'fz') { if (m.isMesh) { m.scale.setScalar(R); m.userData.baseScale = R; } m.position.set(tr.center[0], tr.center[1], tr.center[2] + tr.semiZ); continue; }
     const mm = /^(start|end|center|pos|p\d+)(Y)?$/.exec(role);
     if (!mm) continue;
     const tgt = pointTargetRef(tr, mm[1]);
@@ -1765,15 +2167,18 @@ function onPointerUp(e) {
   }
   downInfo = null;
 }
-/* live array behind a point-style handle (start/end/center/pos/curve anchor) */
+/* live array behind a point-style handle (start/end/center/pos/curve & polyline anchors) */
 function pointTargetRef(tr, base) {
   if (!tr) return null;
   if (tr.type === 'line') return base === 'start' ? tr.start : base === 'end' ? tr.end : null;
   if (tr.type === 'circle') return base === 'center' ? tr.center : null;
   if (tr.type === 'fixed') return base === 'pos' ? tr.position : null;
-  if (tr.type === 'curve') {
+  if (tr.type === 'curve' || tr.type === 'polyline') {
     const m = /^p(\d+)$/.exec(base);
     return m && +m[1] < tr.points.length ? tr.points[+m[1]] : null;
+  }
+  if (tr.type === 'spiral' || tr.type === 'zigzag' || tr.type === 'figure8') {
+    return base === 'center' ? tr.center : null;
   }
   return null;
 }
@@ -1810,6 +2215,21 @@ function applyHandleDrag(tr, role, p, vertical) {
   } else if (role === 'yaw') {
     const dx = p.x - tr.position[0], dz = p.z - tr.position[2];
     if (Math.hypot(dx, dz) > 1e-4) tr.yawDeg = r4(Math.atan2(-dx, -dz) / DEG);
+  } else if (role === 'r0') {
+    /* spiral start handle: horizontal drag = radius, Shift-drag = height offset */
+    if (vertical) tr.yStart = r4(p.y - tr.center[1]);
+    else tr.radiusStart = Math.max(Math.abs(p.x - tr.center[0]), 0.02);
+  } else if (role === 'r1') {
+    if (vertical) tr.yEnd = r4(p.y - tr.center[1]);
+    else tr.radiusEnd = Math.max(Math.abs(p.x - tr.center[0]), 0.02);
+  } else if (role === 'sx') {
+    tr.sizeX = Math.max(2 * Math.abs(p.x - tr.center[0]), 0.05);
+  } else if (role === 'sz') {
+    tr.sizeZ = Math.max(2 * Math.abs(p.z - tr.center[2]), 0.05);
+  } else if (role === 'fx') {
+    tr.semiX = Math.max(Math.abs(p.x - tr.center[0]), 0.02);
+  } else if (role === 'fz') {
+    tr.semiZ = Math.max(Math.abs(p.z - tr.center[2]), 0.02);
   }
 }
 function updateDragHint(e, tr, role) {
@@ -1821,6 +2241,12 @@ function updateDragHint(e, tr, role) {
   } else if (role === 'rx') txt = 'radiusX ' + tr.radiusX.toFixed(3) + ' m';
   else if (role === 'rz') txt = 'radiusZ ' + tr.radiusZ.toFixed(3) + ' m';
   else if (role === 'yaw') txt = 'yaw ' + tr.yawDeg.toFixed(1) + '\u00b0';
+  else if (role === 'r0') txt = 'radiusStart ' + tr.radiusStart.toFixed(3) + ' m  \u00b7  yStart ' + tr.yStart.toFixed(3) + ' m' + ((drag && drag.vertical) ? '' : '  (Shift-drag = height)');
+  else if (role === 'r1') txt = 'radiusEnd ' + tr.radiusEnd.toFixed(3) + ' m  \u00b7  yEnd ' + tr.yEnd.toFixed(3) + ' m' + ((drag && drag.vertical) ? '' : '  (Shift-drag = height)');
+  else if (role === 'sx') txt = 'sizeX ' + tr.sizeX.toFixed(3) + ' m';
+  else if (role === 'sz') txt = 'sizeZ ' + tr.sizeZ.toFixed(3) + ' m';
+  else if (role === 'fx') txt = 'semiX ' + tr.semiX.toFixed(3) + ' m';
+  else if (role === 'fz') txt = 'semiZ ' + tr.semiZ.toFixed(3) + ' m';
   else {
     const mm = /^(start|end|center|pos|p\d+)(Y)?$/.exec(role);
     const v = mm ? pointTargetRef(tr, mm[1]) : null;
@@ -1855,11 +2281,29 @@ function insertCurvePoint(tr, pt) {
   afterCurveStructureChange(tr);
   toast('Curve point inserted (' + tr.points.length + ' points)');
 }
+/* polyline insert: project the click onto every segment (clamped), take the
+   nearest — the exact straight-segment analogue of the curve's nearest-sample */
+function insertPolyPoint(tr, pt) {
+  const P = tr.points, q = [pt.x, pt.y, pt.z];
+  let best = 0, bd = Infinity;
+  for (let i = 0; i < P.length - 1; i++) {
+    const a = P[i], b = P[i + 1];
+    const ab = sub3(b, a);
+    const L2 = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
+    let f = L2 > 1e-12 ? ((q[0] - a[0]) * ab[0] + (q[1] - a[1]) * ab[1] + (q[2] - a[2]) * ab[2]) / L2 : 0;
+    f = clamp(f, 0, 1);
+    const d = dist3(lerp3(a, b, f), q);
+    if (d < bd) { bd = d; best = i; }
+  }
+  tr.points.splice(best + 1, 0, [r4(pt.x), r4(pt.y), r4(pt.z)]);
+  afterCurveStructureChange(tr);
+  toast('Polyline point inserted (' + tr.points.length + ' points)');
+}
 function removeCurvePoint(tr, i) {
-  if (tr.points.length <= 2) { toast('A curve needs at least two points', 'warn'); return; }
+  if (tr.points.length <= 2) { toast('A ' + tr.type + ' needs at least two points', 'warn'); return; }
   tr.points.splice(i, 1);
   afterCurveStructureChange(tr);
-  toast('Curve point removed (' + tr.points.length + ' points)');
+  toast((tr.type === 'polyline' ? 'Polyline' : 'Curve') + ' point removed (' + tr.points.length + ' points)');
 }
 function appendCurvePoint(tr) {
   const n = tr.points.length;
@@ -1871,13 +2315,13 @@ function appendCurvePoint(tr) {
   tr.points.push([r4(last[0] + d[0] / L * step), r4(last[1] + d[1] / L * step), r4(last[2] + d[2] / L * step)]);
   afterCurveStructureChange(tr);
 }
-/* Alt+click: on the curve path -> insert a point; on an anchor -> remove it */
+/* Alt+click: on the curve/polyline path -> insert a point; on an anchor -> remove it */
 function curveAltEdit(e) {
   const hitH = castHandles(e);
   if (hitH) {
     const { trackId, role } = hitH.object.userData;
     const tr = activeTracks().find(t => t.id === trackId);
-    if (tr && tr.type === 'curve' && /^p(\d+)$/.test(role)) {
+    if (tr && (tr.type === 'curve' || tr.type === 'polyline') && /^p(\d+)$/.test(role)) {
       removeCurvePoint(tr, +role.slice(1));
       return true;
     }
@@ -1887,6 +2331,7 @@ function curveAltEdit(e) {
   if (hitL) {
     const tr = activeTracks().find(t => t.id === hitL.object.userData.trackId);
     if (tr && tr.type === 'curve') { insertCurvePoint(tr, hitL.point); return true; }
+    if (tr && tr.type === 'polyline') { insertPolyPoint(tr, hitL.point); return true; }
   }
   return false;
 }
@@ -2116,6 +2561,23 @@ function updateModelNote() {
     note.textContent = 'no model loaded';
   }
 }
+/* per-glTF flag checkboxes (fogon / nighton / flashlighton) reflect the ACTIVE
+   glTF entry only (persistent data, not editor-only state). One table drives
+   all three rows: same UI, same storage rule, same strict-boolean sanitize. */
+const MODEL_FLAG_ROWS = [
+  { key: 'fogon', row: '#fog-row', check: '#fog-check', file: '#fog-file' },
+  { key: 'nighton', row: '#night-row', check: '#night-check', file: '#night-file' },
+  { key: 'flashlighton', row: '#flash-row', check: '#flash-check', file: '#flash-file' }
+];
+function syncFlagChecks() {
+  const m = activeModel();
+  for (const f of MODEL_FLAG_ROWS) {
+    $(f.check).checked = !!m && m[f.key] === true;
+    $(f.row).classList.toggle('disabled', !m);
+    $(f.file).textContent = m ? m.file : 'no model';
+  }
+}
+function syncFogCheck() { syncFlagChecks(); }   /* fogon lives in the same table */
 function renderModelsPanel() {
   const list = $('#models-list');
   list.innerHTML = '';
@@ -2137,6 +2599,7 @@ function renderModelsPanel() {
     row.addEventListener('click', () => { setActiveModel(m.file); toast('Active model: ' + m.file + (three.loaded.has(m.file) ? '' : ' — load its glTF file to see the room')); });
     list.appendChild(row);
   });
+  syncFlagChecks();
 }
 function renderTrackList() {
   const list = $('#track-list');
@@ -2148,15 +2611,25 @@ function renderTrackList() {
   $('#btn-add-circle').disabled = noModel;
   $('#btn-add-fixed').disabled = noModel;
   $('#btn-add-curve').disabled = noModel;
+  $('#btn-add-polyline').disabled = noModel;
+  $('#btn-add-spiral').disabled = noModel;
+  $('#btn-add-zigzag').disabled = noModel;
+  $('#btn-add-fig8').disabled = noModel;
   tracks.forEach(tr => {
     const row = h('div', 'track-row' + (tr.id === state.selection ? ' sel' : '') + (tr.enabled === false ? ' off' : ''));
     const T = cycleDuration(tr);
     let sub = tr.type.toUpperCase() + ' \u00b7 ' + durText(T);
     if (tr.type === 'line') sub += ' \u00b7 ' + tr.speedMS + ' m/s';
-    else if (tr.type === 'curve') sub += ' \u00b7 ' + tr.speedMS + ' m/s \u00b7 ' + tr.points.length + ' pts';
+    else if (tr.type === 'curve' || tr.type === 'polyline') sub += ' \u00b7 ' + tr.speedMS + ' m/s \u00b7 ' + tr.points.length + ' pts';
     else if (tr.type === 'circle') {
       sub += ' \u00b7 ' + tr.speedDegS + '\u00b0/s' +
         (tr.arcBounds && tr.arcMaxDeg > tr.arcMinDeg ? ' \u00b7 arc ' + tr.arcMinDeg + '\u2026' + tr.arcMaxDeg + '\u00b0' : ' \u00b7 r' + tr.radiusX + (tr.radiusZ !== tr.radiusX ? '\u00d7' + tr.radiusZ : ''));
+    } else if (tr.type === 'spiral') {
+      sub += ' \u00b7 ' + tr.speedDegS + '\u00b0/s \u00b7 ' + Math.abs(tr.turns) + ' turns \u00b7 r ' + tr.radiusStart + '\u2192' + tr.radiusEnd;
+    } else if (tr.type === 'zigzag') {
+      sub += ' \u00b7 ' + tr.speedMS + ' m/s \u00b7 ' + Math.round(tr.lanes) + ' lanes \u00b7 ' + r4(tr.sizeX) + '\u00d7' + r4(tr.sizeZ) + ' m';
+    } else if (tr.type === 'figure8') {
+      sub += ' \u00b7 ' + tr.speedDegS + '\u00b0/s \u00b7 ' + r4(tr.semiX) + '\u00d7' + r4(tr.semiZ) + ' m';
     } else {
       sub += ' \u00b7 yaw ' + (tr.yawBounds && tr.yawMaxDeg > tr.yawMinDeg ? tr.yawMinDeg + '\u2026' + tr.yawMaxDeg + '\u00b0' : (Math.abs(tr.yawSpeedDegS) || 0) + '\u00b0/s') +
         (tr.pitchSpeedDegS ? ' \u00b7 pitch ' + (tr.pitchBounds ? tr.pitchMinDeg + '\u2026' + tr.pitchMaxDeg + '\u00b0' : tr.pitchSpeedDegS + '\u00b0/s') : '');
@@ -2363,7 +2836,11 @@ const TYPE_NOTES = {
   line: 'Camera moves in a straight line from start to end at constant speed. pingPong travels back and forth; loop jumps back to the start.',
   circle: 'Camera rides an ellipse in the horizontal plane (radiusX = radiusZ gives a circle) around center. Optionally limit the arc for a back-and-forth sweep instead of a full lap.',
   fixed: 'Camera stands still and rotates. yaw/pitch advance at their speeds; when boundaries are set the rotation mirrors between them (rotation boundaries).',
-  curve: 'Camera glides along a smooth Catmull-Rom curve through the anchor points at constant speed. Alt+click the curve to insert a point, Alt+click an anchor to remove it, drag anchors (or their cyan Y handles) to edit.'
+  curve: 'Camera glides along a smooth Catmull-Rom curve through the anchor points at constant speed. Alt+click the curve to insert a point, Alt+click an anchor to remove it, drag anchors (or their cyan Y handles) to edit.',
+  polyline: 'A line with multiple turns: straight segments join the waypoints (points[]) at constant speed — corridor-style navigation across the whole map. Corners are true corners; the SMOOTH preview rounds them at the turn-rate limit. Alt+click the path to insert a waypoint, Alt+click an anchor to remove it, drag anchors (or cyan Y handles) to edit.',
+  spiral: 'Camera sweeps turns revolutions around center at speedDegS while the radius interpolates radiusStart -> radiusEnd and the height interpolates center.y + yStart -> center.y + yEnd — spiral in for a reveal, out for an establishing shot. The amber/purple handles set start/end radius (drag) and height offset (Shift-drag).',
+  zigzag: 'Auto-generated lawnmower sweep: lanes passes back and forth across a sizeX x sizeZ rectangle centered at center — full-map coverage with one track. The amber/purple handles stretch the rectangle; edit lanes for pass density.',
+  figure8: 'Camera loops a figure-8 (Gerono lemniscate) filling a 2*semiX x 2*semiZ box around center at speedDegS. The curve closes every 360 degrees, so loop wraps seamlessly; pingPong travels the 8 forward then backward. The amber/purple handles stretch the lobes.'
 };
 const LOOP_OPTS = [
   { v: 'loop', t: 'loop — wrap back to start' },
@@ -2467,7 +2944,7 @@ function renderProps() {
       add(numRow('Yaw', { get: () => tr.yawDeg, set: v => tr.yawDeg = v, step: 1 }, '\u00b0'));
       add(numRow('Pitch', { get: () => tr.pitchDeg, set: v => tr.pitchDeg = v, step: 1 }, '\u00b0'));
     }
-  } else if (tr.type === 'curve') {
+  } else if (tr.type === 'curve' || tr.type === 'polyline') {
     gh('Path (anchor points)');
     tr.points.forEach((p, i) => {
       const row = vec3Row('Point ' + i, () => tr.points[i], v => tr.points[i] = v, 'm');
@@ -2484,9 +2961,92 @@ function renderProps() {
     add(numRow('Speed', { get: () => tr.speedMS, set: v => tr.speedMS = v, step: 0.1, min: 0.01 }, 'm/s'));
     gh('Look direction');
     add(selectRow('Look mode', [
-      { v: 'path', t: 'path — along travel (curve tangent)' },
+      { v: 'path', t: tr.type === 'polyline' ? 'path — along travel (segment direction)' : 'path — along travel (curve tangent)' },
       { v: 'normal', t: 'normal — sideways, perpendicular to travel' },
       { v: 'point', t: 'point — at a target' },
+      { v: 'fixed', t: 'fixed — hold direction' }
+    ], () => tr.lookMode, v => { tr.lookMode = v; lookModeChanged(); renderProps(); }));
+    if (tr.lookMode === 'normal') add(segRow('Normal side', [
+      { v: 'forward', t: 'Forward normal' },
+      { v: 'backward', t: 'Backward normal' }
+    ], () => tr.normalDirection, v => { tr.normalDirection = v; lookModeChanged(); }));
+    if (tr.lookMode === 'point') add(vec3Row('Look at', () => tr.lookAt, v => tr.lookAt = v, 'm'));
+    if (tr.lookMode === 'fixed') {
+      add(numRow('Yaw', { get: () => tr.yawDeg, set: v => tr.yawDeg = v, step: 1 }, '\u00b0'));
+      add(numRow('Pitch', { get: () => tr.pitchDeg, set: v => tr.pitchDeg = v, step: 1 }, '\u00b0'));
+    }
+  } else if (tr.type === 'spiral') {
+    gh('Path');
+    add(vec3Row('Center', () => tr.center, v => tr.center = v, 'm'));
+    add(numRow('Radius start', { get: () => tr.radiusStart, set: v => tr.radiusStart = v, step: 0.1, min: 0.02 }, 'm'));
+    add(numRow('Radius end', { get: () => tr.radiusEnd, set: v => tr.radiusEnd = v, step: 0.1, min: 0.02 }, 'm'));
+    add(numRow('Height offset start', { get: () => tr.yStart, set: v => tr.yStart = v, step: 0.1 }, 'm'));
+    add(numRow('Height offset end', { get: () => tr.yEnd, set: v => tr.yEnd = v, step: 0.1 }, 'm'));
+    add(numRow('Start angle', { get: () => tr.startAngleDeg, set: v => tr.startAngleDeg = v, step: 1 }, '\u00b0'));
+    add(selectRow('Direction', [
+      { v: 'cw', t: 'cw — clockwise from above' },
+      { v: 'ccw', t: 'ccw — counter-clockwise' }
+    ], () => tr.direction, v => tr.direction = v));
+    add(numRow('Turns', { get: () => tr.turns, set: v => tr.turns = Math.min(Math.max(v, 0.05), 20), step: 0.25, min: 0.05, max: 20 }, 'rev'));
+    add(numRow('Speed', { get: () => tr.speedDegS, set: v => tr.speedDegS = v, step: 0.5, min: 0.01 }, '\u00b0/s'));
+    gh('Look direction');
+    add(selectRow('Look mode', [
+      { v: 'center', t: 'center — look at spiral center' },
+      { v: 'point', t: 'point — at a target' },
+      { v: 'path', t: 'path — along travel (tangent)' },
+      { v: 'normal', t: 'normal — sideways, perpendicular to travel' },
+      { v: 'fixed', t: 'fixed — hold direction' }
+    ], () => tr.lookMode, v => { tr.lookMode = v; lookModeChanged(); renderProps(); }));
+    if (tr.lookMode === 'normal') add(segRow('Normal side', [
+      { v: 'forward', t: 'Forward normal' },
+      { v: 'backward', t: 'Backward normal' }
+    ], () => tr.normalDirection, v => { tr.normalDirection = v; lookModeChanged(); }));
+    if (tr.lookMode === 'point') add(vec3Row('Look at', () => tr.lookAt, v => tr.lookAt = v, 'm'));
+    if (tr.lookMode === 'fixed') {
+      add(numRow('Yaw', { get: () => tr.yawDeg, set: v => tr.yawDeg = v, step: 1 }, '\u00b0'));
+      add(numRow('Pitch', { get: () => tr.pitchDeg, set: v => tr.pitchDeg = v, step: 1 }, '\u00b0'));
+    }
+  } else if (tr.type === 'zigzag') {
+    gh('Path');
+    add(vec3Row('Center', () => tr.center, v => tr.center = v, 'm'));
+    add(numRow('Size X', { get: () => tr.sizeX, set: v => tr.sizeX = v, step: 0.1, min: 0.05 }, 'm'));
+    add(numRow('Size Z', { get: () => tr.sizeZ, set: v => tr.sizeZ = v, step: 0.1, min: 0.05 }, 'm'));
+    add(numRow('Lanes', { get: () => Math.round(tr.lanes), set: v => tr.lanes = Math.min(Math.max(Math.round(v), 2), 64), step: 1, min: 2, max: 64 }, 'passes'));
+    add(numRow('Speed', { get: () => tr.speedMS, set: v => tr.speedMS = v, step: 0.1, min: 0.01 }, 'm/s'));
+    gh('Look direction');
+    add(selectRow('Look mode', [
+      { v: 'path', t: 'path — along travel (segment direction)' },
+      { v: 'center', t: 'center — look at sweep center' },
+      { v: 'normal', t: 'normal — sideways, perpendicular to travel' },
+      { v: 'point', t: 'point — at a target' },
+      { v: 'fixed', t: 'fixed — hold direction' }
+    ], () => tr.lookMode, v => { tr.lookMode = v; lookModeChanged(); renderProps(); }));
+    if (tr.lookMode === 'normal') add(segRow('Normal side', [
+      { v: 'forward', t: 'Forward normal' },
+      { v: 'backward', t: 'Backward normal' }
+    ], () => tr.normalDirection, v => { tr.normalDirection = v; lookModeChanged(); }));
+    if (tr.lookMode === 'point') add(vec3Row('Look at', () => tr.lookAt, v => tr.lookAt = v, 'm'));
+    if (tr.lookMode === 'fixed') {
+      add(numRow('Yaw', { get: () => tr.yawDeg, set: v => tr.yawDeg = v, step: 1 }, '\u00b0'));
+      add(numRow('Pitch', { get: () => tr.pitchDeg, set: v => tr.pitchDeg = v, step: 1 }, '\u00b0'));
+    }
+  } else if (tr.type === 'figure8') {
+    gh('Path');
+    add(vec3Row('Center', () => tr.center, v => tr.center = v, 'm'));
+    add(numRow('Semi-axis X', { get: () => tr.semiX, set: v => tr.semiX = v, step: 0.1, min: 0.02 }, 'm'));
+    add(numRow('Semi-axis Z', { get: () => tr.semiZ, set: v => tr.semiZ = v, step: 0.1, min: 0.02 }, 'm'));
+    add(numRow('Start angle', { get: () => tr.startAngleDeg, set: v => tr.startAngleDeg = v, step: 1 }, '\u00b0'));
+    add(selectRow('Direction', [
+      { v: 'cw', t: 'cw — clockwise from above' },
+      { v: 'ccw', t: 'ccw — counter-clockwise' }
+    ], () => tr.direction, v => tr.direction = v));
+    add(numRow('Speed', { get: () => tr.speedDegS, set: v => tr.speedDegS = v, step: 0.5, min: 0.01 }, '\u00b0/s'));
+    gh('Look direction');
+    add(selectRow('Look mode', [
+      { v: 'center', t: 'center — look at the crossing point' },
+      { v: 'point', t: 'point — at a target' },
+      { v: 'path', t: 'path — along travel (tangent)' },
+      { v: 'normal', t: 'normal — sideways, perpendicular to travel' },
       { v: 'fixed', t: 'fixed — hold direction' }
     ], () => tr.lookMode, v => { tr.lookMode = v; lookModeChanged(); renderProps(); }));
     if (tr.lookMode === 'normal') add(segRow('Normal side', [
@@ -2548,10 +3108,29 @@ $('#btn-preview-json').addEventListener('click', () => {
   });
 });
 
+/* per-glTF fogon / nighton / flashlighton flags — checkbox updates ONLY the
+   active model entry, then persists via autosave/export (strict booleans) */
+function wireModelFlag(checkSel, key) {
+  $(checkSel).addEventListener('change', () => {
+    const m = activeModel();
+    if (!m) { syncFlagChecks(); return; }            /* no active glTF entry — ignore */
+    m[key] = $(checkSel).checked === true;
+    syncFlagChecks();
+    markDirty();
+  });
+}
+wireModelFlag('#fog-check', 'fogon');
+wireModelFlag('#night-check', 'nighton');
+wireModelFlag('#flash-check', 'flashlighton');
+
 $('#btn-add-line').addEventListener('click', () => addTrack('line'));
 $('#btn-add-circle').addEventListener('click', () => addTrack('circle'));
 $('#btn-add-fixed').addEventListener('click', () => addTrack('fixed'));
 $('#btn-add-curve').addEventListener('click', () => addTrack('curve'));
+$('#btn-add-polyline').addEventListener('click', () => addTrack('polyline'));
+$('#btn-add-spiral').addEventListener('click', () => addTrack('spiral'));
+$('#btn-add-zigzag').addEventListener('click', () => addTrack('zigzag'));
+$('#btn-add-fig8').addEventListener('click', () => addTrack('figure8'));
 
 /* pointer mode + axis locks */
 $('#btn-pointer').addEventListener('click', () => setPointerMode(!pointer.on));
@@ -2714,8 +3293,8 @@ const HELP_HTML = [
   '<h3>Quick start</h3>',
   '<ol style="margin:4px 0;padding-left:20px">',
   '<li><b>Load glTF</b> — pick a .glb (or a .gltf together with its .bin / texture files; drag &amp; drop works). The file is added to the camdat document automatically.</li>',
-  '<li><b>Add a track</b> — Line, Circle, Curve or Fixed. Sensible defaults are placed inside the model\u2019s bounds.</li>',
-  '<li><b>Drag the handles</b> in the viewport to position the path. <b>Shift-drag</b> a handle — or drag its <b>cyan Y handle</b> — to change its height. The radius handles sit on the X and Z axes of the ellipse; the amber handle on a Fixed track sets its yaw.</li>',
+  '<li><b>Add a track</b> — Line, Polyline, Circle, Spiral, Zigzag, Figure 8, Curve or Fixed. Sensible defaults are placed inside the model\u2019s bounds.</li>',
+  '<li><b>Drag the handles</b> in the viewport to position the path. <b>Shift-drag</b> a handle — or drag its <b>cyan Y handle</b> — to change its height. The radius handles sit on the X and Z axes of the ellipse; the amber handle on a Fixed track sets its yaw. On a Spiral, the amber/purple handles set start/end radius (drag) and height offset (Shift-drag); on Zigzag / Figure 8 they stretch the sweep rectangle / the lobes.</li>',
   '<li><b>Tune the numbers</b> — speed, rotation boundaries, look target, FOV, loop mode.</li>',
   '<li><b>Preview</b> — select a track and press Play (or the \u25b6 button on a track row). The TRACK CAM picture-in-picture shows exactly what the track camera sees. Scrub the timeline, change the preview rate.</li>',
   '<li><b>Export camdat.json</b> — done. Import it back any time to continue editing; your work is also autosaved in the browser.</li>',
@@ -2731,7 +3310,7 @@ const HELP_HTML = [
   '<tr><td><b>P</b> pointer mode</td><td>click to drop a movable temporary point; its exact coordinates show in the HUD and drag hint — strictly temporary, never saved/exported. Esc exits.</td></tr>',
   '<tr><td><b>X / Y / Z</b> axis lock</td><td>dragged points move along one axis only (press again to unlock); locked components are copied bit-exact so they never drift — easy perfectly straight lines</td></tr>',
   '<tr><td><b>V</b> expand view</td><td>enlarge / restore the TRACK CAM preview (also the EXPAND button on the preview)</td></tr>',
-  '<tr><td>Alt + click curve</td><td>insert a curve anchor at that spot; Alt + click an anchor removes it</td></tr>',
+  '<tr><td>Alt + click curve / polyline</td><td>insert an anchor at that spot; Alt + click an anchor removes it</td></tr>',
   '<tr><td>Space</td><td>play / pause &nbsp;&nbsp; <b>F</b> frame model &nbsp;&nbsp; <b>G</b> grid &nbsp;&nbsp; <b>L</b> paths &nbsp;&nbsp; <b>C</b> track-cam &nbsp;&nbsp; <b>T</b> smooth turns &nbsp;&nbsp; <b>H</b> help</td></tr>',
   '<tr><td>Del / Backspace</td><td>delete selected track</td></tr>',
   '<tr><td>Ctrl/Cmd + D</td><td>duplicate selected track</td></tr>',
@@ -2739,6 +3318,10 @@ const HELP_HTML = [
   '<h3>Track types</h3>',
   '<p><b>line</b> — straight move from <code>start</code> to <code>end</code> at <code>speedMS</code> (m/s). <b>circle</b> — rides the ellipse <code>center + [radiusX\u00b7cos\u03b8, 0, radiusZ\u00b7sin\u03b8]</code> at <code>speedDegS</code> (\u00b0/s); set <code>radiusX = radiusZ</code> for a circle; optionally bound \u03b8 with <code>arcMinDeg/arcMaxDeg</code> for a sweeping arc. <b>fixed</b> — stands at <code>position</code>; yaw/pitch rotate at their speeds, mirroring between their boundaries when set.</p>',
   '<p><b>curve</b> — a smooth path through deliberate anchor points (<code>points[]</code>, PowerPoint-style: no freehand drawing). It is a <b>uniform Catmull-Rom spline</b> that passes through every anchor; drag anchors to edit, Alt+click the path to insert one, Alt+click an anchor to remove it, or use the per-point rows/buttons in the options panel. The camera travels the <b>exact spline</b> smoothly at constant <code>speedMS</code>, looking along the continuous spline tangent (analytic derivative).</p>',
+  '<p><b>polyline</b> — <i>a line with multiple turns</i>: straight segments join the waypoints (<code>points[]</code>) at constant <code>speedMS</code>, turning sharply at each one — corridor-style navigation that covers a whole map. Editing is identical to curves (drag anchors, Alt+click to insert/remove, cyan Y handles, per-point rows). Corners are exact in the data; the SMOOTH preview rounds them at the turn-rate limit, and consumers can reproduce that with the documented max-rate slerp.</p>',
+  '<p><b>spiral</b> — sweeps <code>turns</code> revolutions around <code>center</code> at <code>speedDegS</code> while the radius interpolates <code>radiusStart</code> \u2192 <code>radiusEnd</code> and the height interpolates <code>center.y + yStart</code> \u2192 <code>center.y + yEnd</code>. Spiral inward for a dramatic reveal, outward for an establishing shot; a plain circle when both radii and both offsets are equal. The amber handle edits start radius (drag) / start height (Shift-drag); the purple one the end values.</p>',
+  '<p><b>zigzag</b> — an auto-generated lawnmower sweep: <code>lanes</code> passes back and forth across a <code>sizeX \u00d7 sizeZ</code> rectangle centered at <code>center</code>, joined by step-overs — full-map coverage from three numbers. The amber/purple handles stretch the rectangle along X / Z. Waypoints are a pure function of the parameters (see the reference below).</p>',
+  '<p><b>figure8</b> — a smooth figure-8 (Gerono lemniscate) filling a <code>2\u00b7semiX \u00d7 2\u00b7semiZ</code> box around <code>center</code>, at angular <code>speedDegS</code>. The curve closes every 360\u00b0 so <code>loop</code> wraps seamlessly; <code>pingPong</code> travels the 8 forward then backward. The amber/purple handles stretch the lobes along X / Z.</p>',
   '<p>Options common to all: <b>speed</b>, <b>rotation boundaries</b> (arc limits for circles, yaw/pitch limits for fixed), <b>loopMode</b> (loop / pingPong / once), <b>lookMode</b> (center / point / path / normal / fixed) with <code>lookAt</code> — <code>normal</code> additionally takes <code>normalDirection</code> (forward / backward), <b>fovDeg</b>, <b>enabled</b>. All motion is constant-speed by design (no easing) — a fixed camera track.</p>',
   '<h3>camdat.json structure</h3>',
   '<pre>' + esc(JSON.stringify({
@@ -2748,16 +3331,21 @@ const HELP_HTML = [
       file: 'SH1.glb',
       addedAt: '2026-09-11T00:00:00Z',
       bounds: { min: [-4.1, 0, -3.2], max: [4.1, 2.8, 3.2] },
+      fogon: false,
+      nighton: true,
+      flashlighton: false,
       tracks: [
         { id: 't1', name: 'Dolly', type: 'line', enabled: true, fovDeg: 60, loopMode: 'pingPong', start: [-3, 1.5, 0], end: [3, 1.5, 0], speedMS: 0.8, lookMode: 'path', durationSec: 15 },
         { id: 't2', name: 'Orbit', type: 'circle', enabled: true, fovDeg: 60, loopMode: 'loop', center: [0, 1.6, 0], radiusX: 2.5, radiusZ: 2.5, startAngleDeg: 0, direction: 'cw', speedDegS: 6, lookMode: 'center', durationSec: 60 },
         { id: 't3', name: 'Corner pan', type: 'fixed', enabled: true, fovDeg: 60, loopMode: 'pingPong', position: [2, 1.6, 2], yawDeg: 45, pitchDeg: 0, yawSpeedDegS: 3, pitchSpeedDegS: 0, yawMinDeg: -30, yawMaxDeg: 90, durationSec: 80 },
         { id: 't4', name: 'S-curve', type: 'curve', enabled: true, fovDeg: 60, loopMode: 'pingPong', points: [[-3, 1.5, 0], [-1, 1.5, 1.4], [1, 1.5, -1.2], [3, 1.5, 0.3]], speedMS: 0.8, lookMode: 'path', durationSec: 22.6 },
-        { id: 't5', name: 'Side look', type: 'curve', enabled: true, fovDeg: 60, loopMode: 'pingPong', points: [[-3, 1.5, 0], [-1, 1.5, 1.4], [1, 1.5, -1.2], [3, 1.5, 0.3]], speedMS: 0.8, lookMode: 'normal', normalDirection: 'forward', durationSec: 22.6 }
+        { id: 't5', name: 'Side look', type: 'curve', enabled: true, fovDeg: 60, loopMode: 'pingPong', points: [[-3, 1.5, 0], [-1, 1.5, 1.4], [1, 1.5, -1.2], [3, 1.5, 0.3]], speedMS: 0.8, lookMode: 'normal', normalDirection: 'forward', durationSec: 22.6 },
+        { id: 't6', name: 'Corridor tour', type: 'polyline', enabled: true, fovDeg: 60, loopMode: 'pingPong', points: [[-3.8, 1.5, -2.8], [0, 1.5, -2.8], [0, 1.5, 2.8], [3.8, 1.5, 2.8]], speedMS: 1.1, lookMode: 'path', durationSec: 22.1 },
+        { id: 't7', name: 'Reveal', type: 'spiral', enabled: true, fovDeg: 60, loopMode: 'pingPong', center: [0, 1.5, 0], radiusStart: 3.4, radiusEnd: 0.9, yStart: 0, yEnd: 1.2, startAngleDeg: 0, direction: 'cw', turns: 1.25, speedDegS: 18, lookMode: 'center', durationSec: 50 }
       ]
     }]
   }, null, 2)) + '</pre>',
-  '<p>Fields are emitted per type (irrelevant fields are omitted). <code>bounds</code> records the model\u2019s bounding box at authoring time so a consumer can sanity-check placement without loading the glTF. <code>durationSec</code> is informational — one full playback cycle; authoritative values are the parameters. Models are matched by file name (basename).</p>',
+  '<p>Fields are emitted per type (irrelevant fields are omitted). <code>bounds</code> records the model\u2019s bounding box at authoring time so a consumer can sanity-check placement without loading the glTF. <code>fogon</code>, <code>nighton</code> and <code>flashlighton</code> are per-model booleans (default false) toggled by the <b>Fog on</b> / <b>Night on</b> / <b>Flashlight on</b> checkboxes in the Models panel — stored with each glTF entry so a consumer can enable its fog / night lighting / camera flashlight for that room. <code>durationSec</code> is informational — one full playback cycle; authoritative values are the parameters. Models are matched by file name (basename).</p>',
   '<h3>Reference playback (port this to your program)</h3>',
   '<pre>' + esc([
     '// camdat playback reference — degrees, seconds, +Y up, right-handed',
@@ -2821,6 +3409,43 @@ const HELP_HTML = [
     '//   then cross(T,+X)); lookAt = pos + N for normalDirection "forward",',
     '//   pos - N for "backward".',
     '',
+    '// POLYLINE (line with multiple turns) and ZIGZAG share one segment walk:',
+    'W[i]   = polyline points[] | zigzag waypoints;',
+    '        // zigzag: s = -1;',
+    '        //   for i in 0..lanes-1: z = c.z - sizeZ/2 + i*sizeZ/(lanes-1);',
+    '        //     W.push([c.x + s*sizeX/2, c.y, z]);  s = -s;',
+    '        //     W.push([c.x + s*sizeX/2, c.y, z]);',
+    '        //   (each pass ends on the side where the next pass starts - the',
+    '        //    step-over is the short segment between the two z values)',
+    'cum[i] = cumulative |W[k+1]-W[k]|;  L = total;  T = L/speedMS;',
+    'd      = phase01(t,T,loopMode) * L;',
+    'i      = last index with cum[i] <= d;  f = (d-cum[i])/(cum[i+1]-cum[i]);',
+    '                        // (zero span: f = 0)',
+    'pos    = W[i] + f*(W[i+1]-W[i]);      // exact segment lerp',
+    '// lookMode "path": tangent = normalize(W[i+1]-W[i]) (zero-length segment:',
+    '//   first non-zero forward, else backward), reversed on pingPong return.',
+    '',
+    '// SPIRAL: dir = direction==="cw" ? 1 : -1;  sweep = turns*360 (deg);',
+    'T   = sweep / speedDegS;   f = phase01(t,T,loopMode);',
+    'th  = (startAngleDeg + dir*sweep*f) * D2R;',
+    'r   = radiusStart + (radiusEnd-radiusStart)*f;',
+    'y   = center[1] + yStart + (yEnd-yStart)*f;',
+    'pos = [center[0] + r*cos(th), y, center[2] + r*sin(th)];',
+    '// lookMode "path" tangent (analytic, per unit f):',
+    '//   dpos/df = [ (radiusEnd-radiusStart)*cos(th) - r*sin(th)*dir*sweep*D2R,',
+    '//               yEnd-yStart,',
+    '//               (radiusEnd-radiusStart)*sin(th) + r*cos(th)*dir*sweep*D2R ],',
+    '//   normalized, reversed on the pingPong return leg.',
+    '',
+    '// FIGURE8: dir as above; theta bounded to ONE full period so loopMode works:',
+    'aMin = dir>0 ? startAngleDeg : startAngleDeg-360;',
+    'aMax = dir>0 ? startAngleDeg+360 : startAngleDeg;',
+    'th   = angleAt(t, startAngleDeg, speedDegS, dir, aMin, aMax, loopMode);',
+    'pos  = [center[0] + semiX*sin(th*D2R), center[1],',
+    '        center[2] + semiZ*sin(2*th*D2R)];   // Gerono lemniscate',
+    '// lookMode "path": tangent = dir*[semiX*cos(th*D2R), 0,',
+    '//   2*semiZ*cos(2*th*D2R)] normalized, reversed on pingPong return.',
+    '',
     '// ORIENTATION: if lookMode is center|point -\u003e lookAt(pos, lookAt or center);',
     '// if path -\u003e look along the travel direction; if fixed -\u003e YXZ Euler',
     '// (pitch about X applied after yaw about Y; pitch positive = up).',
@@ -2832,7 +3457,7 @@ const HELP_HTML = [
   '<li>Serve this page over http(s) (e.g. <code>python -m http.server</code>); ES modules do not run from file:// in most browsers. The three.js library loads from the jsDelivr CDN once per session.</li>',
   '<li>The orange line + dot on the blue camera body is the direction pointer (it replaced the old cone): it shows where the track camera is looking without blocking the TRACK CAM preview, which now renders the room without editor overlays.</li>',
   '<li><b>Smooth turns</b> — while playing, the track camera approaches its exact orientation at a bounded turn rate (SMOOTH toolbar button, deg/s field in the playbar, key T). Paused / scrubbed / exported views are always exact. camdat.json is unchanged: consumers can reproduce the same feel with a max-rate quaternion slerp toward the track orientation, snapping on seeks and track switches.</li>',
-  '<li><b>Editing aids are editor-only</b> — the pointer-mode point, axis locks, WASD camera and the expanded preview never touch camdat.json: exports and autosaves contain only tracks. camdat <code>version</code> stays 1; the <code>curve</code> type is additive — older consumers that don\u2019t know it should skip unknown track types (this editor imports older files unchanged and counts skipped invalid tracks).</li>',
+  '<li><b>Editing aids are editor-only</b> — the pointer-mode point, axis locks, WASD camera and the expanded preview never touch camdat.json: exports and autosaves contain only tracks. camdat <code>version</code> stays 1; the <code>curve</code>, <code>polyline</code>, <code>spiral</code>, <code>zigzag</code> and <code>figure8</code> types are additive — older consumers that don\u2019t know them should skip unknown track types (this editor imports older files unchanged and counts skipped invalid tracks).</li>',
   '<li><b>Normal look mode</b> — <code>lookMode: "normal"</code> points the camera sideways, perpendicular to the direction of travel: <code>N = normalize(cross(T, up))</code> with <code>up = +Y</code>. N is horizontal by construction (a level, side-looking camera) and, unlike a Frenet-frame normal, it never flips at inflection points or on straight (zero-curvature) stretches. <code>normalDirection</code> (<code>"forward"</code>, the default when absent / <code>"backward"</code>) picks +N or −N — the two options in the editor are the Forward/Backward normal pills. On a pingPong return leg the travel tangent reverses (same rule as <code>path</code>), so the side stays constant relative to travel; on a cw circle the forward normal looks inward, on ccw outward. Switching look modes or forward/backward blends the preview orientation over ~0.8 s instead of snapping (editor-only; the stored track is always exact). Fixed/rotating tracks have no travel tangent, so they do not offer the mode. The stored field is additive: files without it behave exactly as before, and consumers meeting an unknown lookMode value should fall back to their default.</li>',
   '<li><b>Curves are deterministic</b> — the spline, the 64-samples-per-segment arc-length table, the exact-point evaluation <code>seg()</code> and the analytic tangent <code>dseg()</code> above are pure functions of <code>points[]</code>, so any consumer reproduces identical positions and orientations (smooth C1 motion, constant speed). Editing anchors (drag / insert / remove / numeric rows) only rewrites <code>points[]</code>; the stored fields and schema are unchanged.</li>',
   '<li>Autosave lives in the browser\u2019s localStorage — Export writes the portable <code>camdat.json</code>.</li>',
@@ -2888,6 +3513,46 @@ window.__camtrack = {
   get hudText() { const el = $('#nav-hud'); return el ? el.textContent : ''; },
   get pipExpanded() { return pipBig; },
   setPipExpanded(big) { setPipExpanded(!!big); },
+  get fogInfo() {
+    const m = activeModel();
+    return { file: m ? m.file : null, fogon: m ? m.fogon === true : null, checkbox: $('#fog-check').checked };
+  },
+  setFogOn(on) {
+    const m = activeModel();
+    if (!m) return null;
+    m.fogon = on === true;
+    syncFlagChecks();
+    markDirty();
+    return m.fogon;
+  },
+  get nightInfo() {
+    const m = activeModel();
+    return { file: m ? m.file : null, nighton: m ? m.nighton === true : null, checkbox: $('#night-check').checked };
+  },
+  setNightOn(on) {
+    const m = activeModel();
+    if (!m) return null;
+    m.nighton = on === true;
+    syncFlagChecks();
+    markDirty();
+    return m.nighton;
+  },
+  get flashInfo() {
+    const m = activeModel();
+    return { file: m ? m.file : null, flashlighton: m ? m.flashlighton === true : null, checkbox: $('#flash-check').checked };
+  },
+  setFlashOn(on) {
+    const m = activeModel();
+    if (!m) return null;
+    m.flashlighton = on === true;
+    syncFlagChecks();
+    markDirty();
+    return m.flashlighton;
+  },
+  get modelFlagsInfo() {
+    const m = activeModel();
+    return m ? { file: m.file, fogon: m.fogon === true, nighton: m.nighton === true, flashlighton: m.flashlighton === true } : null;
+  },
   handles() {
     const out = [];
     visuals.forEach(v => {
@@ -2918,6 +3583,38 @@ window.__camtrack = {
     for (const m of state.doc.models) {
       const tr = m.tracks.find(x => x.id === id);
       if (tr && tr.type === 'curve') { removeCurvePoint(tr, +i); return tr.points.length; }
+    }
+    return null;
+  },
+  polyMath(id, d) {
+    for (const m of state.doc.models) {
+      const tr = m.tracks.find(x => x.id === id);
+      if (tr && tr.type === 'polyline') {
+        const lut = polylineLUT(tr), dd = +d || 0;
+        const { seg, f } = polyParamAt(lut, dd);
+        return { pos: polyPosAt(lut, dd), tan: polyTangentAt(lut, dd), seg, f, total: lut.total, n: tr.points.length };
+      }
+    }
+    return null;
+  },
+  polyInsert(id, p) {
+    for (const m of state.doc.models) {
+      const tr = m.tracks.find(x => x.id === id);
+      if (tr && tr.type === 'polyline') { insertPolyPoint(tr, { x: +p[0], y: +p[1], z: +p[2] }); return tr.points.length; }
+    }
+    return null;
+  },
+  polyRemovePoint(id, i) {
+    for (const m of state.doc.models) {
+      const tr = m.tracks.find(x => x.id === id);
+      if (tr && tr.type === 'polyline') { removeCurvePoint(tr, +i); return tr.points.length; }
+    }
+    return null;
+  },
+  zigzagWaypoints(id) {
+    for (const m of state.doc.models) {
+      const tr = m.tracks.find(x => x.id === id);
+      if (tr && tr.type === 'zigzag') return { points: zigzagPoints(tr), total: zigzagLUT(tr).total };
     }
     return null;
   },
